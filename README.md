@@ -35,4 +35,4 @@ static assets).
 2. Or, from the CLI with a Cloudflare API token: `npx wrangler deploy`.
 
 Now that this repo is public, Cloudflare's Git integration should redeploy
-automatically on every push to `main`.
+automatically on every push to `main`. (auto-deploy check: v2)
