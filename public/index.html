@@ -308,12 +308,66 @@ const A9_LOCATION = 'A9 Warehouse';
 let flag = null;
 let photoData = null;
 let currentFilter = 'all';
-let editingId = null;
+let editingSticker = null;
 let defaultOwner = localStorage.getItem('tagger-defaultowner') || '';
 let defaultLocation = localStorage.getItem('tagger-defaultlocation') || '';
 let locationValue = '';
+let offline = false;
 
 const $ = id => document.getElementById(id);
+
+function escHtml(v){
+  return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function photoSrc(raw){
+  if(!raw) return '';
+  return raw.startsWith('data:') ? raw : `/api/photos/${raw}`;
+}
+
+async function uploadPhotoIfNeeded(photo){
+  if(!photo) return null;
+  if(!photo.startsWith('data:')) return photo;
+  const blob = await (await fetch(photo)).blob();
+  const res = await fetch('/api/photos', { method: 'POST', headers: {'Content-Type': blob.type || 'image/jpeg'}, body: blob });
+  if(!res.ok) throw new Error('photo upload failed');
+  const data = await res.json();
+  return data.key;
+}
+
+async function toBase64DataUrl(photo){
+  if(!photo) return null;
+  if(photo.startsWith('data:')) return photo;
+  try{
+    const res = await fetch(photoSrc(photo));
+    if(!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }catch(e){ return null; }
+}
+
+async function pushItemToServer(item){
+  try{
+    const photoKey = await uploadPhotoIfNeeded(item.photo);
+    const payload = { ...item, photo: photoKey };
+    delete payload._dirty;
+    const res = await fetch('/api/items', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if(res.status === 409) return null;
+    if(!res.ok) throw new Error('sync failed');
+    return payload;
+  }catch(e){
+    return { ...item, _dirty: true };
+  }
+}
 
 function setupChipGroup(groupId, defaultValue){
   const group = document.getElementById(groupId);
@@ -367,13 +421,34 @@ $('locDefaultTick').addEventListener('click', () => {
 
 async function loadData(){
   try{
-    const raw = localStorage.getItem('tagger-items');
-    items = raw ? JSON.parse(raw) : [];
-  }catch(e){ items = []; }
-  try{
     const rawLoc = localStorage.getItem('tagger-locations');
     if(rawLoc) locations = JSON.parse(rawLoc);
   }catch(e){}
+
+  let cached = [];
+  try{
+    const raw = localStorage.getItem('tagger-items');
+    cached = raw ? JSON.parse(raw) : [];
+  }catch(e){ cached = []; }
+
+  try{
+    const res = await fetch('/api/items');
+    if(!res.ok) throw new Error('bad response');
+    items = await res.json();
+    offline = false;
+    const serverStickers = new Set(items.map(i => i.sticker));
+    const orphans = cached.filter(i => !serverStickers.has(i.sticker));
+    for(const orphan of orphans){
+      const migrated = await pushItemToServer(orphan);
+      if(migrated) items.unshift(migrated);
+    }
+    items.sort((a, b) => b.sticker.localeCompare(a.sticker));
+  }catch(e){
+    offline = true;
+    items = cached;
+  }
+
+  await saveItems();
   renderLocationChips();
   setNextStickerNum();
   $('itemOwner').value = defaultOwner;
@@ -445,10 +520,11 @@ function resizeImage(file, cb){
   reader.readAsDataURL(file);
 }
 
-function setPhotoBox(url){
-  photoData = url;
-  $('photoBox').innerHTML = url
-    ? `<img src="${url}"><input type="file" accept="image/*" capture="environment" id="photoInput">`
+function setPhotoBox(rawPhoto){
+  photoData = rawPhoto;
+  const displaySrc = photoSrc(rawPhoto);
+  $('photoBox').innerHTML = displaySrc
+    ? `<img src="${displaySrc}"><input type="file" accept="image/*" capture="environment" id="photoInput">`
     : `<span id="photoPlaceholder">Tap to take photo</span><input type="file" accept="image/*" capture="environment" id="photoInput">`;
   bindPhotoInput();
 }
@@ -503,10 +579,11 @@ function showToast(msg){
 
 $('saveBtn').addEventListener('click', async () => {
   const stickerVal = $('stickerNum').value.trim();
-  if(!editingId && items.some(i => i.sticker === stickerVal)){
+  if(!editingSticker && items.some(i => i.sticker === stickerVal)){
     alert(`Sticker #${stickerVal} is already used. Pick a different number.`);
     return;
   }
+  $('saveBtn').disabled = true;
   const fields = {
     name: $('itemName').value.trim(),
     type: typeChip.get(),
@@ -517,22 +594,52 @@ $('saveBtn').addEventListener('click', async () => {
     destination: A9_LOCATION,
     destinationDetail: $('itemDestDetail').value,
     owner: $('itemOwner').value.trim(),
-    flag: flag,
-    photo: photoData
+    flag: flag
   };
 
-  if(editingId){
-    const item = items.find(i => i.id === editingId);
-    if(item) Object.assign(item, fields);
+  let photoKey = photoData;
+  try{ photoKey = await uploadPhotoIfNeeded(photoData); }catch(e){}
+
+  if(editingSticker){
+    const item = items.find(i => i.sticker === editingSticker);
+    if(item) Object.assign(item, fields, { photo: photoKey });
+    try{
+      const res = await fetch(`/api/items/${encodeURIComponent(editingSticker)}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ ...fields, photo: photoKey })
+      });
+      if(!res.ok) throw new Error('update failed');
+      if(item) delete item._dirty;
+      showToast(`Updated #${stickerVal}`);
+    }catch(e){
+      if(item) item._dirty = true;
+      showToast(`Updated #${stickerVal} locally — will sync when online`);
+    }
     await saveItems();
-    showToast(`Updated #${stickerVal}`);
     resetForm();
     document.querySelector('.tab[data-tab="list"]').click();
   } else {
-    const item = { id: Date.now(), sticker: stickerVal, ...fields, ts: new Date().toISOString() };
+    const item = { sticker: stickerVal, ...fields, photo: photoKey, ts: new Date().toISOString() };
+    try{
+      const res = await fetch('/api/items', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(item)
+      });
+      if(res.status === 409){
+        alert(`Sticker #${stickerVal} was just taken by someone else. Pick a different number.`);
+        $('saveBtn').disabled = false;
+        return;
+      }
+      if(!res.ok) throw new Error('save failed');
+      showToast(`Saved #${item.sticker} — ${item.name}`);
+    }catch(e){
+      item._dirty = true;
+      showToast(`Saved #${item.sticker} locally — will sync when online`);
+    }
     items.unshift(item);
     await saveItems();
-    showToast(`Saved #${item.sticker} — ${item.name}`);
     resetForm();
   }
   updateOwnerOptions();
@@ -543,10 +650,13 @@ $('saveBtn').addEventListener('click', async () => {
 $('cancelEditLink').addEventListener('click', e => { e.preventDefault(); resetForm(); });
 
 $('deleteItemBtn').addEventListener('click', async () => {
-  if(!editingId) return;
-  const item = items.find(i => i.id === editingId);
+  if(!editingSticker) return;
+  const item = items.find(i => i.sticker === editingSticker);
   if(!confirm(`Delete #${item ? item.sticker : ''}? This can't be undone.`)) return;
-  items = items.filter(i => i.id !== editingId);
+  try{
+    await fetch(`/api/items/${encodeURIComponent(editingSticker)}`, { method: 'DELETE' });
+  }catch(e){}
+  items = items.filter(i => i.sticker !== editingSticker);
   await saveItems();
   showToast('Item deleted');
   resetForm();
@@ -555,10 +665,10 @@ $('deleteItemBtn').addEventListener('click', async () => {
   document.querySelector('.tab[data-tab="list"]').click();
 });
 
-function startEdit(id){
-  const item = items.find(i => i.id === id);
+function startEdit(sticker){
+  const item = items.find(i => i.sticker === sticker);
   if(!item) return;
-  editingId = id;
+  editingSticker = sticker;
   $('stickerNum').value = item.sticker;
   $('stickerNum').readOnly = true;
   $('itemName').value = item.name;
@@ -581,7 +691,7 @@ function startEdit(id){
 }
 
 function resetForm(){
-  editingId = null;
+  editingSticker = null;
   $('itemName').value = '';
   $('itemQty').value = 1;
   typeChip.set('Equipment');
@@ -605,7 +715,7 @@ function resetForm(){
 }
 
 function updateHeaderCount(){
-  $('headerCount').textContent = `${items.length} logged`;
+  $('headerCount').textContent = `${items.length} logged${offline ? ' · offline' : ''}`;
 }
 
 function renderList(){
@@ -618,20 +728,21 @@ function renderList(){
   }
   list.innerHTML = filtered.map(i => `
     <div class="item">
-      ${i.photo ? `<img class="thumb" src="${i.photo}">` : `<div class="thumb empty">no photo</div>`}
+      ${i.photo ? `<img class="thumb" src="${photoSrc(i.photo)}">` : `<div class="thumb empty">no photo</div>`}
       <div class="body">
         <div class="top">
           <span class="num">#${i.sticker}</span>
           <span class="dot" style="background:${i.flag==='green' ? 'var(--green)' : 'var(--red)'}"></span>
+          ${i._dirty ? `<span class="badge">Not synced</span>` : ''}
         </div>
         <div class="name">${i.name}</div>
         <div class="meta">${i.type}${i.packing ? ' · ' + i.packing : ''} · qty ${i.qty} · ${i.location}${i.locationDetail ? ' (' + i.locationDetail + ')' : ''} → ${i.destination}${i.destinationDetail ? ' (' + i.destinationDetail + ')' : ''}${i.owner ? ' · ' + i.owner : ''}</div>
       </div>
-      <button class="edit-btn" data-id="${i.id}">&#9998;</button>
+      <button class="edit-btn" data-sticker="${escHtml(i.sticker)}">&#9998;</button>
     </div>
   `).join('');
   list.querySelectorAll('.edit-btn').forEach(btn => {
-    btn.addEventListener('click', () => startEdit(parseInt(btn.dataset.id)));
+    btn.addEventListener('click', () => startEdit(btn.dataset.sticker));
   });
 }
 
@@ -673,10 +784,6 @@ document.querySelectorAll('.tab').forEach(tab => {
     }
   });
 });
-
-function escHtml(v){
-  return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
 
 async function downloadStyledExcel(filename, headers, rows, textCols = [], photoCol = -1){
   const wb = new ExcelJS.Workbook();
@@ -720,13 +827,14 @@ async function downloadStyledExcel(filename, headers, rows, textCols = [], photo
   URL.revokeObjectURL(url);
 }
 
-$('exportBtn').addEventListener('click', () => {
+$('exportBtn').addEventListener('click', async () => {
+  showToast('Preparing Excel file...');
   const headers = ['Sticker','Name','Type','Packing','Qty','Current location','Exact Location','Location at A9','End User','Requirement','Timestamp','Photo'];
-  const rows = items.map(i => [
+  const rows = await Promise.all(items.map(async i => [
     i.sticker, i.name, i.type, i.packing || '', i.qty, i.location, i.locationDetail || '',
     i.destinationDetail || '', i.owner || '', i.flag === 'green' ? 'Required' : 'Not required', i.ts,
-    i.photo || ''
-  ]);
+    await toBase64DataUrl(i.photo)
+  ]));
   downloadStyledExcel('item-tags.xlsx', headers, rows, [0], headers.length - 1);
 });
 
@@ -734,17 +842,18 @@ function isQtyMismatch(i){
   return i.arrived && i.receivedQty !== undefined && String(i.receivedQty) !== String(i.qty);
 }
 
-$('exportCheckinBtn').addEventListener('click', () => {
+$('exportCheckinBtn').addEventListener('click', async () => {
+  showToast('Preparing Excel file...');
   const headers = ['Sticker','Name','Expected Qty','Received Qty','Status','Qty Flag','Condition','Checked At','Photo'];
-  const rows = items.map(i => [
+  const rows = await Promise.all(items.map(async i => [
     i.sticker, i.name, i.qty,
     i.arrived ? (i.receivedQty ?? '') : '',
     i.arrived ? 'Received' : 'Pending to receive',
     isQtyMismatch(i) ? 'MISMATCH' : '',
     i.arrived ? (i.condition || '') : '',
     i.arrived ? (i.checkedAt || '') : '',
-    i.photo || ''
-  ]);
+    await toBase64DataUrl(i.photo)
+  ]));
   downloadStyledExcel('receiving-list.xlsx', headers, rows, [0], headers.length - 1);
 });
 
@@ -775,7 +884,7 @@ function renderCheckinList(){
   }
   list.innerHTML = filtered.map(i => `
     <div class="item checkin-match" data-sticker="${escHtml(i.sticker)}" style="cursor:pointer;">
-      ${i.photo ? `<img class="thumb" src="${i.photo}">` : `<div class="thumb empty">no photo</div>`}
+      ${i.photo ? `<img class="thumb" src="${photoSrc(i.photo)}">` : `<div class="thumb empty">no photo</div>`}
       <div class="body">
         <div class="top">
           <span class="num">#${i.sticker}</span>
@@ -820,7 +929,7 @@ function renderCheckinMatches(query){
   }
   matchesEl.innerHTML = matches.map(i => `
     <div class="item checkin-match" data-sticker="${escHtml(i.sticker)}" style="cursor:pointer;">
-      ${i.photo ? `<img class="thumb" src="${i.photo}">` : `<div class="thumb empty">no photo</div>`}
+      ${i.photo ? `<img class="thumb" src="${photoSrc(i.photo)}">` : `<div class="thumb empty">no photo</div>`}
       <div class="body">
         <div class="top">
           <span class="num">#${i.sticker}</span>
@@ -860,7 +969,7 @@ function renderCheckinResult(sticker){
 
   box.innerHTML = `
     <div class="item" style="margin-bottom:0;">
-      ${match.photo ? `<img class="thumb" src="${match.photo}">` : `<div class="thumb empty">no photo</div>`}
+      ${match.photo ? `<img class="thumb" src="${photoSrc(match.photo)}">` : `<div class="thumb empty">no photo</div>`}
       <div class="body">
         <div class="top">
           <span class="num">#${match.sticker}</span>
@@ -915,15 +1024,28 @@ function renderCheckinResult(sticker){
 
   $('confirmReceiptBtn').addEventListener('click', async () => {
     clampRecvQty();
+    const receivedQty = parseInt($('recvQty').value || 0);
+    const checkedAt = new Date().toISOString();
     match.arrived = true;
-    match.receivedQty = parseInt($('recvQty').value || 0);
+    match.receivedQty = receivedQty;
     match.condition = condition;
-    match.checkedAt = new Date().toISOString();
+    match.checkedAt = checkedAt;
+    try{
+      const res = await fetch(`/api/items/${encodeURIComponent(sticker)}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ arrived: true, receivedQty, condition, checkedAt })
+      });
+      if(!res.ok) throw new Error('checkin sync failed');
+      delete match._dirty;
+    }catch(e){
+      match._dirty = true;
+    }
     await saveItems();
     renderCheckinStatus();
     renderCheckinList();
     renderCheckinMatches($('checkinSearch').value);
-    showToast(isQtyMismatch(match) ? `#${sticker} saved — quantity mismatch flagged` : `#${sticker} receipt saved`);
+    showToast(isQtyMismatch(match) ? `#${sticker} saved — quantity mismatch flagged` : (match._dirty ? `#${sticker} saved locally — will sync when online` : `#${sticker} receipt saved`));
   });
 }
 

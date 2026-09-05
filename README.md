@@ -2,37 +2,45 @@
 
 A single-page item tagger for logging equipment during a move: photo,
 sticker number, type, packing condition, quantity, source location,
-exact location, destination room at A9, and a take/leave flag. Everything
-is saved to the browser's `localStorage` — it's currently a single-device
-tool, with no shared backend yet.
+exact location, destination room at A9, and a required/not-required flag.
+
+Backed by a shared Cloudflare D1 database + R2 bucket, so every phone
+reads and writes the same list — a sticker number used on one device is
+immediately unavailable on every other device, and photos are stored
+server-side (R2) rather than in the phone's local storage. If a device is
+offline when saving, the item is kept locally and marked "Not synced"
+until the next successful sync.
 
 The "A9 Check-in" tab lets whoever receives items search by sticker number
-or name, confirm received quantity/condition, and export a receiving list.
+or name, confirm received quantity/condition (flagging quantity mismatches),
+and export a receiving list.
 
-It's a static site — just `public/index.html`, no build step, no
-dependencies other than the ExcelJS library loaded from a CDN for the
-Excel export.
+## Architecture
+
+- `public/index.html` — the whole front-end, static, no build step. Loads
+  ExcelJS from a CDN for the Excel exports (with embedded photo thumbnails).
+- `worker.js` — the Worker script, handling `/api/items` (CRUD) and
+  `/api/photos` (upload/serve), backed by D1 and R2. Everything else falls
+  through to `env.ASSETS` (the static site).
+- `schema.sql` — the D1 table definition. Run once, by hand, in the D1
+  database's Console tab in the Cloudflare dashboard.
+- `wrangler.jsonc` — binds the Worker to `./public` (assets), D1 (`DB`),
+  and R2 (`PHOTOS`). Kept separate from `public/` so `.git`, `README.md`,
+  and `wrangler.jsonc` itself are never uploaded as static assets.
 
 ## Run locally
 
-Just open `public/index.html` in a browser, or serve the folder:
-
 ```bash
-npx serve public
+npx wrangler dev
 ```
 
 ## Deploy
 
-This repo includes `wrangler.jsonc` configured for Cloudflare Workers Static
-Assets, pointed at `./public` (kept separate from the repo root so `.git`,
-`README.md`, and `wrangler.jsonc` itself are never uploaded as public
-static assets).
+Push to `main` — Cloudflare's Git integration auto-deploys (requires the
+GitHub connection to have access to this repo, which is public).
 
-1. In the Cloudflare dashboard: **Workers & Pages → Create → Import a Git
-   repository**, and select this repo. Cloudflare will pick up
-   `wrangler.jsonc` automatically and deploy on every push to `main`
-   (requires the GitHub connection to have access to this repo).
-2. Or, from the CLI with a Cloudflare API token: `npx wrangler deploy`.
-
-Now that this repo is public, Cloudflare's Git integration should redeploy
-automatically on every push to `main`. (auto-deploy check: v2)
+One-time setup after cloning/forking:
+1. Create a D1 database and an R2 bucket in the Cloudflare dashboard, and
+   fill in their names/IDs in `wrangler.jsonc`.
+2. Open the D1 database's **Console** tab and run the contents of
+   `schema.sql` once, to create the `items` table.

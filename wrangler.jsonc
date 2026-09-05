@@ -1,10 +1,26 @@
 {
-  // Deploy as a static site on Cloudflare (Workers Static Assets).
-  // It's a single static HTML file — no build step needed.
+  // Static site (./public) + a Worker script (worker.js) handling the
+  // /api/* routes backed by D1 (item data) and R2 (photo files).
+  // Anything not matched by worker.js falls through to env.ASSETS.
   "name": "moving-helper",
   "compatibility_date": "2025-01-01",
+  "main": "worker.js",
   "assets": {
     "directory": "./public",
+    "binding": "ASSETS",
     "not_found_handling": "single-page-application"
-  }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "moving-helper-db",
+      "database_id": "5bb64377-3b62-4fe8-bc0f-530a17b7c5a3"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "PHOTOS",
+      "bucket_name": "moving-helper-r2"
+    }
+  ]
 }
