@@ -86,12 +86,14 @@
   .flag-btn.green.on{background:var(--green-bg); border-color:var(--green); color:var(--green);}
   .flag-btn.green.on .dot{background:var(--green);}
   .flag-btn.red.on{background:var(--red-bg); border-color:var(--red); color:var(--red);}
-  .chip-group{display:flex; flex-wrap:wrap; gap:8px;}
+  .chip-group{display:flex; gap:6px;}
   .chip{
-    padding:9px 15px; border-radius:20px; border:1.5px solid var(--line);
-    background:var(--panel); font-size:13.5px; color:#6b6a62; font-weight:500;
+    flex:1; padding:9px 3px; border-radius:20px; border:1.5px solid var(--line);
+    background:var(--panel); font-size:clamp(9.5px, 3vw, 13.5px); color:#6b6a62; font-weight:500;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:center;
   }
   .chip.on{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+  .req{color:var(--red); font-weight:700;}
   .badge{
     font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:20px;
     background:var(--amber); color:#fff; white-space:nowrap;
@@ -131,11 +133,12 @@
   }
   .owner-row{display:flex; gap:8px;}
   .owner-row input{flex:1;}
-  .star-btn{
-    width:42px; height:42px; border-radius:8px; border:1px solid var(--line);
-    background:var(--panel); font-size:18px; color:#8a8a80; flex-shrink:0;
+  .default-btn{
+    padding:9px 13px; border-radius:20px; border:1.5px solid var(--line);
+    background:var(--panel); font-size:12px; color:#6b6a62; font-weight:600;
+    flex-shrink:0; white-space:nowrap;
   }
-  .star-btn.on{color:var(--amber); border-color:var(--amber);}
+  .default-btn.on{background:var(--amber); border-color:var(--amber); color:#fff;}
   .empty-state{text-align:center; color:#8a8a80; font-size:13.5px; padding:40px 20px;}
   .filters{display:flex; gap:7px; margin-bottom:12px; overflow-x:auto; padding-bottom:2px;}
   .filter-chip{
@@ -189,10 +192,10 @@
         </div>
       </div>
 
-      <label>Item name</label>
+      <label>Item name <span class="req">*</span></label>
       <input type="text" id="itemName" placeholder="e.g. Bench drill, M4 bolts box">
 
-      <label>Type</label>
+      <label>Type <span class="req">*</span></label>
       <div class="chip-group" id="itemTypeGroup">
         <button type="button" class="chip" data-value="Equipment">Equipment</button>
         <button type="button" class="chip" data-value="Tool">Tool</button>
@@ -200,7 +203,7 @@
         <button type="button" class="chip" data-value="Accessory">Accessory</button>
       </div>
 
-      <label>Packing condition</label>
+      <label>Packing condition <span class="req">*</span></label>
       <div class="chip-group" id="itemPackingGroup">
         <button type="button" class="chip" data-value="In box">In box</button>
         <button type="button" class="chip" data-value="Bag">Bag</button>
@@ -214,13 +217,14 @@
         <button class="stepper" id="qtyPlus">+</button>
       </div>
 
-      <label>Location</label>
-      <select id="itemLoc"></select>
+      <label>Location <span class="req">*</span></label>
+      <div class="chip-group" id="itemLocGroup"></div>
+      <button type="button" class="default-btn" id="locDefaultBtn" style="margin-top:8px;">Default</button>
 
-      <label>Exact location (leave blank if unknown)</label>
+      <label>Exact location <span class="req">*</span></label>
       <input type="text" id="itemLocDetail" placeholder="e.g. Rack 3, Cabinet B">
 
-      <label>Location at A9</label>
+      <label>Location at A9 (leave blank if unknown)</label>
       <select id="itemDestDetail">
         <option value="">Select a room / area</option>
         <option>Carbon Fiber CNC</option>
@@ -238,14 +242,14 @@
         <option>Storage/Drone Repairs</option>
       </select>
 
-      <label>Team / owner</label>
+      <label>Team / owner <span class="req">*</span></label>
       <div class="owner-row">
         <input type="text" id="itemOwner" list="ownerOptions" placeholder="Who does this belong to?">
-        <button type="button" class="star-btn" id="ownerDefaultBtn" title="Set/unset as default">&starf;</button>
+        <button type="button" class="default-btn" id="ownerDefaultBtn">Default</button>
       </div>
       <datalist id="ownerOptions"></datalist>
 
-      <label>Take, or not?</label>
+      <label>Take, or not? <span class="req">*</span></label>
       <div class="flag-row">
         <button class="flag-btn green" id="flagGreen"><span class="dot"></span>Take</button>
         <button class="flag-btn red" id="flagRed"><span class="dot"></span>Not required</button>
@@ -285,6 +289,7 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script>
 let items = [];
 let locations = ['Masdar', 'Airport Warehouse', 'Kizad'];
@@ -294,6 +299,8 @@ let photoData = null;
 let currentFilter = 'all';
 let editingId = null;
 let defaultOwner = localStorage.getItem('tagger-defaultowner') || '';
+let defaultLocation = localStorage.getItem('tagger-defaultlocation') || '';
+let locationValue = '';
 
 const $ = id => document.getElementById(id);
 
@@ -312,6 +319,36 @@ function setupChipGroup(groupId, defaultValue){
 const typeChip = setupChipGroup('itemTypeGroup', 'Equipment');
 const packingChip = setupChipGroup('itemPackingGroup', 'In box');
 
+function renderLocationChips(){
+  const group = $('itemLocGroup');
+  if(!locations.includes(locationValue)){
+    locationValue = locations.includes(defaultLocation) ? defaultLocation : (locations[0] || '');
+  }
+  group.innerHTML = locations.map(l => `<button type="button" class="chip" data-value="${escHtml(l)}">${escHtml(l)}</button>`).join('');
+  group.querySelectorAll('.chip').forEach(c => {
+    c.classList.toggle('on', c.dataset.value === locationValue);
+    c.addEventListener('click', () => {
+      locationValue = c.dataset.value;
+      group.querySelectorAll('.chip').forEach(x => x.classList.toggle('on', x.dataset.value === locationValue));
+      updateLocDefaultBtn();
+      checkSaveEnabled();
+    });
+  });
+  updateLocDefaultBtn();
+}
+
+function updateLocDefaultBtn(){
+  $('locDefaultBtn').classList.toggle('on', !!locationValue && locationValue === defaultLocation);
+}
+
+$('locDefaultBtn').addEventListener('click', () => {
+  if(!locationValue) return;
+  defaultLocation = (defaultLocation === locationValue) ? '' : locationValue;
+  localStorage.setItem('tagger-defaultlocation', defaultLocation);
+  updateLocDefaultBtn();
+  showToast(defaultLocation ? `"${defaultLocation}" set as default location` : 'Default location cleared');
+});
+
 async function loadData(){
   try{
     const raw = localStorage.getItem('tagger-items');
@@ -321,15 +358,15 @@ async function loadData(){
     const rawLoc = localStorage.getItem('tagger-locations');
     if(rawLoc) locations = JSON.parse(rawLoc);
   }catch(e){}
-  refreshLocSelect();
+  renderLocationChips();
   setNextStickerNum();
   $('itemOwner').value = defaultOwner;
-  updateOwnerStar();
+  updateOwnerDefaultBtn();
   updateOwnerOptions();
   renderList();
 }
 
-function updateOwnerStar(){
+function updateOwnerDefaultBtn(){
   const val = $('itemOwner').value.trim();
   $('ownerDefaultBtn').classList.toggle('on', !!val && val === defaultOwner);
 }
@@ -344,7 +381,7 @@ $('ownerDefaultBtn').addEventListener('click', () => {
   if(!val) return;
   defaultOwner = (defaultOwner === val) ? '' : val;
   localStorage.setItem('tagger-defaultowner', defaultOwner);
-  updateOwnerStar();
+  updateOwnerDefaultBtn();
   showToast(defaultOwner ? `"${defaultOwner}" set as default` : 'Default cleared');
 });
 
@@ -371,11 +408,6 @@ function computeNextNum(){
 
 function setNextStickerNum(){
   $('stickerNum').value = pad(computeNextNum());
-}
-
-function refreshLocSelect(){
-  const sel = $('itemLoc');
-  sel.innerHTML = locations.map(l => `<option>${l}</option>`).join('');
 }
 
 function resizeImage(file, cb){
@@ -439,10 +471,12 @@ $('flagRed').addEventListener('click', () => setFlag('red'));
 function checkSaveEnabled(){
   const name = $('itemName').value.trim();
   const owner = $('itemOwner').value.trim();
-  $('saveBtn').disabled = !(name && owner && flag);
+  const locDetail = $('itemLocDetail').value.trim();
+  $('saveBtn').disabled = !(name && owner && flag && locDetail);
 }
 $('itemName').addEventListener('input', checkSaveEnabled);
-$('itemOwner').addEventListener('input', () => { checkSaveEnabled(); updateOwnerStar(); });
+$('itemLocDetail').addEventListener('input', checkSaveEnabled);
+$('itemOwner').addEventListener('input', () => { checkSaveEnabled(); updateOwnerDefaultBtn(); });
 
 function showToast(msg){
   const t = $('toast');
@@ -462,7 +496,7 @@ $('saveBtn').addEventListener('click', async () => {
     type: typeChip.get(),
     packing: packingChip.get(),
     qty: parseInt($('itemQty').value || 0),
-    location: $('itemLoc').value,
+    location: locationValue,
     locationDetail: $('itemLocDetail').value.trim(),
     destination: A9_LOCATION,
     destinationDetail: $('itemDestDetail').value,
@@ -515,7 +549,8 @@ function startEdit(id){
   typeChip.set(item.type || 'Equipment');
   packingChip.set(item.packing || 'In box');
   $('itemQty').value = item.qty;
-  $('itemLoc').value = item.location;
+  locationValue = item.location;
+  renderLocationChips();
   $('itemLocDetail').value = item.locationDetail || '';
   $('itemDestDetail').value = item.destinationDetail || '';
   $('itemOwner').value = item.owner || '';
@@ -524,7 +559,7 @@ function startEdit(id){
   $('editBannerNum').textContent = item.sticker;
   $('saveBtn').textContent = 'Update item';
   $('deleteItemBtn').style.display = 'block';
-  updateOwnerStar();
+  updateOwnerDefaultBtn();
   setFlag(item.flag || null);
   document.querySelector('.tab[data-tab="add"]').click();
 }
@@ -535,6 +570,8 @@ function resetForm(){
   $('itemQty').value = 1;
   typeChip.set('Equipment');
   packingChip.set('In box');
+  locationValue = defaultLocation || locations[0] || '';
+  renderLocationChips();
   $('itemLocDetail').value = '';
   $('itemDestDetail').value = '';
   $('itemOwner').value = defaultOwner;
@@ -547,7 +584,7 @@ function resetForm(){
   $('editBanner').style.display = 'none';
   $('saveBtn').textContent = 'Save item';
   $('deleteItemBtn').style.display = 'none';
-  updateOwnerStar();
+  updateOwnerDefaultBtn();
   checkSaveEnabled();
 }
 
@@ -614,19 +651,21 @@ function escHtml(v){
   return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-function downloadStyledExcel(filename, headers, rows, textCols = []){
-  const thStyle = 'background:#1c1d1a;color:#f2f1ec;font-weight:bold;padding:6px 10px;border:1px solid #999;text-align:left;font-family:sans-serif;';
-  const tdStyle = 'padding:6px 10px;border:1px solid #ccc;font-family:sans-serif;';
-  let table = '<table><thead><tr>' + headers.map(h => `<th style="${thStyle}">${escHtml(h)}</th>`).join('') + '</tr></thead><tbody>';
-  rows.forEach(r => {
-    table += '<tr>' + r.map((cell, ci) => {
-      const style = textCols.includes(ci) ? tdStyle + "mso-number-format:'\\@';" : tdStyle;
-      return `<td style="${style}">${escHtml(cell)}</td>`;
-    }).join('') + '</tr>';
+async function downloadStyledExcel(filename, headers, rows, textCols = []){
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Sheet1');
+  const headerRow = ws.addRow(headers);
+  headerRow.eachCell(cell => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1C1D1A' } };
+    cell.font = { bold: true, color: { argb: 'FFF2F1EC' } };
   });
-  table += '</tbody></table>';
-  const html = `<html><head><meta charset="UTF-8"></head><body>${table}</body></html>`;
-  const blob = new Blob([html], {type: 'application/vnd.ms-excel'});
+  rows.forEach(r => {
+    const row = ws.addRow(r);
+    textCols.forEach(ci => { row.getCell(ci + 1).numFmt = '@'; });
+  });
+  ws.columns.forEach(col => { col.width = 18; });
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -642,7 +681,7 @@ $('exportBtn').addEventListener('click', () => {
     i.destinationDetail || '', i.owner || '', i.flag === 'green' ? 'Take' : 'Not required', i.ts,
     i.arrived ? 'Yes' : 'No'
   ]);
-  downloadStyledExcel('item-tags.xls', headers, rows, [0]);
+  downloadStyledExcel('item-tags.xlsx', headers, rows, [0]);
 });
 
 $('exportCheckinBtn').addEventListener('click', () => {
@@ -654,7 +693,7 @@ $('exportCheckinBtn').addEventListener('click', () => {
     i.arrived ? (i.condition || '') : '',
     i.arrived ? (i.checkedAt || '') : ''
   ]);
-  downloadStyledExcel('receiving-list.xls', headers, rows, [0]);
+  downloadStyledExcel('receiving-list.xlsx', headers, rows, [0]);
 });
 
 function renderCheckinStatus(){
