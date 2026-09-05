@@ -86,6 +86,17 @@
   .flag-btn.green.on{background:var(--green-bg); border-color:var(--green); color:var(--green);}
   .flag-btn.green.on .dot{background:var(--green);}
   .flag-btn.red.on{background:var(--red-bg); border-color:var(--red); color:var(--red);}
+  .chip-group{display:flex; flex-wrap:wrap; gap:8px;}
+  .chip{
+    padding:9px 15px; border-radius:20px; border:1.5px solid var(--line);
+    background:var(--panel); font-size:13.5px; color:#6b6a62; font-weight:500;
+  }
+  .chip.on{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+  .badge{
+    font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:20px;
+    background:var(--amber); color:#fff; white-space:nowrap;
+  }
+  .badge.received{background:var(--green);}
   .flag-btn.red.on .dot{background:var(--red);}
   .save-btn{
     width:100%; padding:14px; border:none; border-radius:9px; background:var(--ink);
@@ -182,19 +193,19 @@
       <input type="text" id="itemName" placeholder="e.g. Bench drill, M4 bolts box">
 
       <label>Type</label>
-      <select id="itemType">
-        <option>Equipment</option>
-        <option>Tool</option>
-        <option>Consumables</option>
-        <option>Accessory</option>
-      </select>
+      <div class="chip-group" id="itemTypeGroup">
+        <button type="button" class="chip" data-value="Equipment">Equipment</button>
+        <button type="button" class="chip" data-value="Tool">Tool</button>
+        <button type="button" class="chip" data-value="Consumables">Consumables</button>
+        <button type="button" class="chip" data-value="Accessory">Accessory</button>
+      </div>
 
       <label>Packing condition</label>
-      <select id="itemPacking">
-        <option>In box</option>
-        <option>Bag</option>
-        <option>Unpacked</option>
-      </select>
+      <div class="chip-group" id="itemPackingGroup">
+        <button type="button" class="chip" data-value="In box">In box</button>
+        <button type="button" class="chip" data-value="Bag">Bag</button>
+        <button type="button" class="chip" data-value="Unpacked">Unpacked</button>
+      </div>
 
       <label>Quantity</label>
       <div class="qty-row">
@@ -207,13 +218,25 @@
       <select id="itemLoc"></select>
 
       <label>Exact location (leave blank if unknown)</label>
-      <input type="text" id="itemLocDetail" placeholder="e.g. Building 3, Room 2">
+      <input type="text" id="itemLocDetail" placeholder="e.g. Rack 3, Cabinet B">
 
-      <label>Move to</label>
-      <select id="itemDest"></select>
-
-      <label>Exact location at destination (leave blank if unknown)</label>
-      <input type="text" id="itemDestDetail" placeholder="e.g. Shelf 4, Rack B">
+      <label>Location at A9</label>
+      <select id="itemDestDetail">
+        <option value="">Select a room / area</option>
+        <option>Carbon Fiber CNC</option>
+        <option>Dirty Work Room</option>
+        <option>3D Printer Room</option>
+        <option>Store 01</option>
+        <option>Store 02</option>
+        <option>Storage S1</option>
+        <option>Storage S3</option>
+        <option>Storage S4</option>
+        <option>Storage S5</option>
+        <option>Storage S6</option>
+        <option>Storage S7</option>
+        <option>Tools Room</option>
+        <option>Storage/Drone Repairs</option>
+      </select>
 
       <label>Team / owner</label>
       <div class="owner-row">
@@ -239,7 +262,7 @@
       <div class="filter-chip" data-filter="green">Take</div>
       <div class="filter-chip" data-filter="red">Not required</div>
     </div>
-    <button class="export-btn" id="exportBtn">Export CSV</button>
+    <button class="export-btn" id="exportBtn">Export Excel</button>
     <div id="itemList"></div>
   </div>
 
@@ -249,10 +272,13 @@
     </div>
 
     <div class="card">
-      <label>Sticker number</label>
-      <input type="text" id="checkinSearch" inputmode="numeric" placeholder="Type the number on the item">
+      <label>Search by sticker number or name</label>
+      <input type="text" id="checkinSearch" placeholder="e.g. 00007 or Bench drill">
+      <div id="checkinMatches" style="margin-top:10px;"></div>
       <div id="checkinResult" style="margin-top:14px;"></div>
     </div>
+
+    <button class="export-btn" id="exportCheckinBtn">Export receiving list (Excel)</button>
   </div>
 
 </main>
@@ -262,7 +288,7 @@
 <script>
 let items = [];
 let locations = ['Masdar', 'Airport Warehouse', 'Kizad'];
-let destinations = ['A9 Warehouse'];
+const A9_LOCATION = 'A9 Warehouse';
 let flag = null;
 let photoData = null;
 let currentFilter = 'all';
@@ -270,6 +296,21 @@ let editingId = null;
 let defaultOwner = localStorage.getItem('tagger-defaultowner') || '';
 
 const $ = id => document.getElementById(id);
+
+function setupChipGroup(groupId, defaultValue){
+  const group = document.getElementById(groupId);
+  let value = defaultValue;
+  function render(){
+    group.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.value === value));
+  }
+  group.querySelectorAll('.chip').forEach(c => {
+    c.addEventListener('click', () => { value = c.dataset.value; render(); });
+  });
+  render();
+  return { get: () => value, set: v => { value = v; render(); } };
+}
+const typeChip = setupChipGroup('itemTypeGroup', 'Equipment');
+const packingChip = setupChipGroup('itemPackingGroup', 'In box');
 
 async function loadData(){
   try{
@@ -335,8 +376,6 @@ function setNextStickerNum(){
 function refreshLocSelect(){
   const sel = $('itemLoc');
   sel.innerHTML = locations.map(l => `<option>${l}</option>`).join('');
-  const destSel = $('itemDest');
-  destSel.innerHTML = destinations.map(d => `<option>${d}</option>`).join('');
 }
 
 function resizeImage(file, cb){
@@ -420,13 +459,13 @@ $('saveBtn').addEventListener('click', async () => {
   }
   const fields = {
     name: $('itemName').value.trim(),
-    type: $('itemType').value,
-    packing: $('itemPacking').value,
+    type: typeChip.get(),
+    packing: packingChip.get(),
     qty: parseInt($('itemQty').value || 0),
     location: $('itemLoc').value,
     locationDetail: $('itemLocDetail').value.trim(),
-    destination: $('itemDest').value,
-    destinationDetail: $('itemDestDetail').value.trim(),
+    destination: A9_LOCATION,
+    destinationDetail: $('itemDestDetail').value,
     owner: $('itemOwner').value.trim(),
     flag: flag,
     photo: photoData
@@ -473,12 +512,11 @@ function startEdit(id){
   $('stickerNum').value = item.sticker;
   $('stickerNum').readOnly = true;
   $('itemName').value = item.name;
-  $('itemType').value = item.type;
-  $('itemPacking').value = item.packing || 'In box';
+  typeChip.set(item.type || 'Equipment');
+  packingChip.set(item.packing || 'In box');
   $('itemQty').value = item.qty;
   $('itemLoc').value = item.location;
   $('itemLocDetail').value = item.locationDetail || '';
-  $('itemDest').value = item.destination;
   $('itemDestDetail').value = item.destinationDetail || '';
   $('itemOwner').value = item.owner || '';
   setPhotoBox(item.photo || null);
@@ -495,7 +533,8 @@ function resetForm(){
   editingId = null;
   $('itemName').value = '';
   $('itemQty').value = 1;
-  $('itemPacking').selectedIndex = 0;
+  typeChip.set('Equipment');
+  packingChip.set('In box');
   $('itemLocDetail').value = '';
   $('itemDestDetail').value = '';
   $('itemOwner').value = defaultOwner;
@@ -571,23 +610,51 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-$('exportBtn').addEventListener('click', () => {
-  const header = 'Sticker,Name,Type,Packing,Qty,Location,LocationDetail,Destination,DestinationDetail,Owner,Flag,Timestamp,Arrived\n';
-  const rows = items.map(i => [
-    i.sticker, `"${i.name.replace(/"/g,'""')}"`, i.type, i.packing || '', i.qty, i.location,
-    `"${(i.locationDetail||'').replace(/"/g,'""')}"`,
-    i.destination || '',
-    `"${(i.destinationDetail||'').replace(/"/g,'""')}"`,
-    `"${(i.owner||'').replace(/"/g,'""')}"`, i.flag, i.ts,
-    i.arrived ? 'Yes' : 'No'
-  ].join(','));
-  const csv = header + rows.join('\n');
-  const blob = new Blob([csv], {type:'text/csv'});
+function escHtml(v){
+  return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function downloadStyledExcel(filename, headers, rows, textCols = []){
+  const thStyle = 'background:#1c1d1a;color:#f2f1ec;font-weight:bold;padding:6px 10px;border:1px solid #999;text-align:left;font-family:sans-serif;';
+  const tdStyle = 'padding:6px 10px;border:1px solid #ccc;font-family:sans-serif;';
+  let table = '<table><thead><tr>' + headers.map(h => `<th style="${thStyle}">${escHtml(h)}</th>`).join('') + '</tr></thead><tbody>';
+  rows.forEach(r => {
+    table += '<tr>' + r.map((cell, ci) => {
+      const style = textCols.includes(ci) ? tdStyle + "mso-number-format:'\\@';" : tdStyle;
+      return `<td style="${style}">${escHtml(cell)}</td>`;
+    }).join('') + '</tr>';
+  });
+  table += '</tbody></table>';
+  const html = `<html><head><meta charset="UTF-8"></head><body>${table}</body></html>`;
+  const blob = new Blob([html], {type: 'application/vnd.ms-excel'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'item-tags.csv';
+  a.download = filename;
   a.click();
+  URL.revokeObjectURL(url);
+}
+
+$('exportBtn').addEventListener('click', () => {
+  const headers = ['Sticker','Name','Type','Packing','Qty','Location','Exact Location','Location at A9','Owner','Take?','Timestamp','Arrived'];
+  const rows = items.map(i => [
+    i.sticker, i.name, i.type, i.packing || '', i.qty, i.location, i.locationDetail || '',
+    i.destinationDetail || '', i.owner || '', i.flag === 'green' ? 'Take' : 'Not required', i.ts,
+    i.arrived ? 'Yes' : 'No'
+  ]);
+  downloadStyledExcel('item-tags.xls', headers, rows, [0]);
+});
+
+$('exportCheckinBtn').addEventListener('click', () => {
+  const headers = ['Sticker','Name','Expected Qty','Received Qty','Status','Condition','Checked At'];
+  const rows = items.map(i => [
+    i.sticker, i.name, i.qty,
+    i.arrived ? (i.receivedQty ?? '') : '',
+    i.arrived ? 'Received' : 'Pending to receive',
+    i.arrived ? (i.condition || '') : '',
+    i.arrived ? (i.checkedAt || '') : ''
+  ]);
+  downloadStyledExcel('receiving-list.xls', headers, rows, [0]);
 });
 
 function renderCheckinStatus(){
@@ -603,6 +670,56 @@ function renderCheckinStatus(){
   if(damagedCount) txt += ` · ${damagedCount} damaged`;
   if(mismatchCount) txt += ` · ${mismatchCount} qty mismatch`;
   el.textContent = txt + '.';
+}
+
+let checkinSelectedSticker = null;
+
+function renderCheckinMatches(query){
+  const matchesEl = $('checkinMatches');
+  const q = query.trim().toLowerCase();
+  if(!q){
+    matchesEl.innerHTML = '';
+    $('checkinResult').innerHTML = '';
+    checkinSelectedSticker = null;
+    return;
+  }
+  const matches = items.filter(i => i.sticker.includes(q) || i.name.toLowerCase().includes(q));
+  if(matches.length === 0){
+    matchesEl.innerHTML = `<div class="empty-state">No item found matching "${escHtml(query)}".</div>`;
+    $('checkinResult').innerHTML = '';
+    checkinSelectedSticker = null;
+    return;
+  }
+  if(matches.length === 1){
+    matchesEl.innerHTML = '';
+    selectCheckinItem(matches[0].sticker);
+    return;
+  }
+  matchesEl.innerHTML = matches.map(i => `
+    <div class="item checkin-match" data-sticker="${escHtml(i.sticker)}" style="cursor:pointer;">
+      ${i.photo ? `<img class="thumb" src="${i.photo}">` : `<div class="thumb empty">no photo</div>`}
+      <div class="body">
+        <div class="top">
+          <span class="num">#${i.sticker}</span>
+          <span class="badge ${i.arrived ? 'received' : ''}">${i.arrived ? 'Received' : 'Pending to receive'}</span>
+        </div>
+        <div class="name">${i.name}</div>
+      </div>
+    </div>
+  `).join('');
+  matchesEl.querySelectorAll('.checkin-match').forEach(el => {
+    el.addEventListener('click', () => selectCheckinItem(el.dataset.sticker));
+  });
+  if(checkinSelectedSticker && matches.some(m => m.sticker === checkinSelectedSticker)){
+    renderCheckinResult(checkinSelectedSticker);
+  } else {
+    $('checkinResult').innerHTML = '';
+  }
+}
+
+function selectCheckinItem(sticker){
+  checkinSelectedSticker = sticker;
+  renderCheckinResult(sticker);
 }
 
 function renderCheckinResult(sticker){
@@ -625,16 +742,17 @@ function renderCheckinResult(sticker){
         <div class="top">
           <span class="num">#${match.sticker}</span>
           <span class="dot" style="background:${match.flag==='green' ? 'var(--green)' : 'var(--red)'}"></span>
+          <span class="badge ${alreadyChecked ? 'received' : ''}">${alreadyChecked ? 'Received' : 'Pending to receive'}</span>
         </div>
         <div class="name">${match.name}</div>
         <div class="meta">${match.type} · expected qty ${expectedQty} · from ${match.location}${match.locationDetail ? ' (' + match.locationDetail + ')' : ''} → ${match.destination}${match.destinationDetail ? ' (' + match.destinationDetail + ')' : ''}</div>
       </div>
     </div>
 
-    <label style="margin-top:14px;">Received quantity</label>
+    <label style="margin-top:14px;">Received quantity (max ${expectedQty})</label>
     <div class="qty-row">
       <button class="stepper" id="recvMinus">&minus;</button>
-      <input type="number" id="recvQty" value="${defaultReceived}" min="0">
+      <input type="number" id="recvQty" value="${defaultReceived}" min="0" max="${expectedQty}">
       <button class="stepper" id="recvPlus">+</button>
     </div>
 
@@ -655,26 +773,35 @@ function renderCheckinResult(sticker){
     $('condGood').classList.toggle('on', c === 'good');
     $('condDamaged').classList.toggle('on', c === 'damaged');
   }
+  function clampRecvQty(){
+    const el = $('recvQty');
+    let v = parseInt(el.value || 0);
+    if(isNaN(v)) v = 0;
+    v = Math.max(0, Math.min(expectedQty, v));
+    el.value = v;
+  }
   setCond(condition);
   $('condGood').addEventListener('click', () => setCond('good'));
   $('condDamaged').addEventListener('click', () => setCond('damaged'));
   $('recvMinus').addEventListener('click', () => { const el = $('recvQty'); el.value = Math.max(0, parseInt(el.value || 0) - 1); });
-  $('recvPlus').addEventListener('click', () => { const el = $('recvQty'); el.value = parseInt(el.value || 0) + 1; });
+  $('recvPlus').addEventListener('click', () => { const el = $('recvQty'); el.value = Math.min(expectedQty, parseInt(el.value || 0) + 1); });
+  $('recvQty').addEventListener('input', clampRecvQty);
 
   $('confirmReceiptBtn').addEventListener('click', async () => {
+    clampRecvQty();
     match.arrived = true;
     match.receivedQty = parseInt($('recvQty').value || 0);
     match.condition = condition;
     match.checkedAt = new Date().toISOString();
     await saveItems();
-    renderCheckinResult(sticker);
     renderCheckinStatus();
+    renderCheckinMatches($('checkinSearch').value);
     showToast(`#${sticker} receipt saved`);
   });
 }
 
 $('checkinSearch').addEventListener('input', e => {
-  renderCheckinResult(e.target.value.trim());
+  renderCheckinMatches(e.target.value);
 });
 
 loadData();
