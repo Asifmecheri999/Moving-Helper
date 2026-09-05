@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Item Tagger</title>
+<style>
+  :root{
+    --ink:#1c1d1a;
+    --paper:#f2f1ec;
+    --panel:#ffffff;
+    --line:#d8d6cc;
+    --green:#2f7d4f;
+    --green-bg:#e4f2e8;
+    --red:#b6412c;
+    --red-bg:#fbe6e1;
+    --amber:#c98a1c;
+    --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); -webkit-tap-highlight-color:transparent;
+    padding-bottom:40px;
+  }
+  header{
+    background:var(--ink); color:var(--paper);
+    padding:16px 16px 14px;
+    display:flex; align-items:center; justify-content:space-between;
+    position:sticky; top:0; z-index:10;
+  }
+  header h1{font-size:16px; margin:0; font-weight:600; letter-spacing:0.2px;}
+  header .count{font-family:var(--mono); font-size:13px; opacity:0.75;}
+  .tabs{
+    display:flex; background:var(--panel); border-bottom:1px solid var(--line);
+    position:sticky; top:52px; z-index:9;
+  }
+  .tab{
+    flex:1; text-align:center; padding:11px 4px; font-size:13.5px;
+    color:#8a8a80; border-bottom:2px solid transparent; cursor:pointer;
+  }
+  .tab.active{color:var(--ink); border-bottom-color:var(--ink); font-weight:600;}
+  main{padding:14px;}
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:14px; margin-bottom:12px;
+  }
+  label{display:block; font-size:12.5px; color:#6b6a62; margin-bottom:6px; margin-top:14px;}
+  label:first-of-type{margin-top:0;}
+  input[type=text], input[type=number], select{
+    width:100%; padding:10px 11px; border:1px solid var(--line); border-radius:8px;
+    font-size:15px; background:var(--paper); color:var(--ink); font-family:var(--sans);
+  }
+  input:focus, select:focus{outline:2px solid var(--ink); outline-offset:-1px;}
+  .sticker-row{display:flex; gap:10px; align-items:flex-end;}
+  .sticker-row > div{flex:1;}
+  .sticker-num{
+    font-family:var(--mono); font-size:22px; font-weight:700; letter-spacing:1px;
+    padding:9px 11px;
+  }
+  .qty-row{display:flex; align-items:center; gap:8px;}
+  .qty-row input{text-align:center;}
+  .stepper{
+    width:42px; height:42px; border-radius:8px; border:1px solid var(--line);
+    background:var(--panel); font-size:19px; color:var(--ink); flex-shrink:0;
+  }
+  .photo-box{
+    border:1.5px dashed var(--line); border-radius:10px; height:150px;
+    display:flex; align-items:center; justify-content:center; overflow:hidden;
+    position:relative; background:var(--paper); color:#8a8a80; font-size:13px;
+  }
+  .photo-box img{width:100%; height:100%; object-fit:cover;}
+  .photo-box input{position:absolute; inset:0; opacity:0; cursor:pointer;}
+  .flag-row{display:flex; gap:10px;}
+  .flag-btn{
+    flex:1; padding:14px 8px; border-radius:9px; border:2px solid var(--line);
+    background:var(--panel); font-size:14.5px; font-weight:600; color:#8a8a80;
+    display:flex; align-items:center; justify-content:center; gap:7px;
+  }
+  .flag-btn .dot{width:11px; height:11px; border-radius:50%; background:#ccc;}
+  .flag-btn.green.on{background:var(--green-bg); border-color:var(--green); color:var(--green);}
+  .flag-btn.green.on .dot{background:var(--green);}
+  .flag-btn.red.on{background:var(--red-bg); border-color:var(--red); color:var(--red);}
+  .flag-btn.red.on .dot{background:var(--red);}
+  .save-btn{
+    width:100%; padding:14px; border:none; border-radius:9px; background:var(--ink);
+    color:var(--paper); font-size:15.5px; font-weight:600; margin-top:16px;
+  }
+  .save-btn:disabled{opacity:0.4;}
+  .item{
+    display:flex; gap:11px; background:var(--panel); border:1px solid var(--line);
+    border-radius:10px; padding:10px; margin-bottom:9px; align-items:center;
+  }
+  .item .thumb{
+    width:54px; height:54px; border-radius:7px; object-fit:cover; background:var(--paper);
+    flex-shrink:0; border:1px solid var(--line);
+  }
+  .item .thumb.empty{display:flex; align-items:center; justify-content:center; color:#c3c1b6; font-size:10px;}
+  .item .body{flex:1; min-width:0;}
+  .item .top{display:flex; align-items:center; gap:7px;}
+  .item .num{font-family:var(--mono); font-weight:700; font-size:13.5px;}
+  .item .dot{width:9px; height:9px; border-radius:50%; flex-shrink:0;}
+  .item .name{font-size:14.5px; font-weight:600; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .item .meta{font-size:12px; color:#8a8a80; margin-top:2px;}
+  .item .del{background:none; border:none; color:#c3c1b6; font-size:19px; padding:4px 8px;}
+  .empty-state{text-align:center; color:#8a8a80; font-size:13.5px; padding:40px 20px;}
+  .filters{display:flex; gap:7px; margin-bottom:12px; overflow-x:auto; padding-bottom:2px;}
+  .filter-chip{
+    flex-shrink:0; padding:7px 13px; border-radius:20px; border:1px solid var(--line);
+    background:var(--panel); font-size:12.5px; color:#6b6a62;
+  }
+  .filter-chip.active{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+  .export-btn{
+    width:100%; padding:12px; border-radius:9px; border:1px solid var(--line);
+    background:var(--panel); font-size:14px; font-weight:600; color:var(--ink); margin-bottom:12px;
+  }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    background:var(--ink); color:var(--paper); padding:10px 18px; border-radius:20px;
+    font-size:13.5px; opacity:0; pointer-events:none; transition:opacity 0.2s;
+  }
+  .toast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Item Tagger</h1>
+  <span class="count" id="headerCount">0 logged</span>
+</header>
+
+<div class="tabs">
+  <div class="tab active" data-tab="add">Add item</div>
+  <div class="tab" data-tab="list">Log</div>
+  <div class="tab" data-tab="checkin">A9 Check-in</div>
+</div>
+
+<main>
+
+  <div id="addView">
+    <div class="card">
+      <label>Photo</label>
+      <div class="photo-box" id="photoBox">
+        <span id="photoPlaceholder">Tap to take photo</span>
+        <input type="file" accept="image/*" capture="environment" id="photoInput">
+      </div>
+
+      <div class="sticker-row">
+        <div>
+          <label>Sticker number</label>
+          <input type="text" id="stickerNum" class="sticker-num" inputmode="numeric">
+        </div>
+      </div>
+
+      <label>Item name</label>
+      <input type="text" id="itemName" placeholder="e.g. Bench drill, M4 bolts box">
+
+      <label>Type</label>
+      <select id="itemType">
+        <option>Equipment</option>
+        <option>Tool</option>
+        <option>Consumables</option>
+        <option>Accessory</option>
+      </select>
+
+      <label>Quantity</label>
+      <div class="qty-row">
+        <button class="stepper" id="qtyMinus">&minus;</button>
+        <input type="number" id="itemQty" value="1" min="0">
+        <button class="stepper" id="qtyPlus">+</button>
+      </div>
+
+      <label>Location</label>
+      <select id="itemLoc"></select>
+
+      <label>Move to</label>
+      <select id="itemDest"></select>
+
+      <label>Rack / cabin no. (leave blank if unknown)</label>
+      <input type="text" id="itemSubloc" placeholder="e.g. Rack 3, Cabin B">
+
+      <label>Team / owner</label>
+      <input type="text" id="itemOwner" placeholder="Who does this belong to?">
+
+      <label>Take, or not?</label>
+      <div class="flag-row">
+        <button class="flag-btn green" id="flagGreen"><span class="dot"></span>Take</button>
+        <button class="flag-btn red" id="flagRed"><span class="dot"></span>Not required</button>
+      </div>
+
+      <button class="save-btn" id="saveBtn" disabled>Save item</button>
+    </div>
+  </div>
+
+  <div id="listView" style="display:none;">
+    <div class="card" id="syncCard">
+      <label>Cloud API URL</label>
+      <input type="text" id="syncUrl" placeholder="Paste your Cloudflare Worker URL">
+      <button class="export-btn" id="saveSyncUrlBtn" style="margin-top:10px;">Save & connect</button>
+      <div id="syncStatus" style="font-size:12px;color:#8a8a80;margin-top:8px;"></div>
+    </div>
+    <div class="filters" id="filters">
+      <div class="filter-chip active" data-filter="all">All</div>
+      <div class="filter-chip" data-filter="green">Take</div>
+      <div class="filter-chip" data-filter="red">Not required</div>
+    </div>
+    <button class="export-btn" id="exportBtn">Export CSV</button>
+    <button class="export-btn" id="resyncBtn">Resync all to cloud</button>
+    <div id="itemList"></div>
+  </div>
+
+  <div id="checkinView" style="display:none;">
+    <div class="card">
+      <button class="export-btn" id="refreshMasterBtn">Refresh from cloud</button>
+      <div id="masterListStatus" style="font-size:12px; color:#8a8a80; margin-top:4px;">No master list loaded &mdash; searching your own log only.</div>
+      <label style="margin-top:16px;">Or import a CSV file manually (offline fallback)</label>
+      <input type="file" accept=".csv" id="masterCsvInput">
+    </div>
+
+    <div class="card">
+      <label>Sticker number</label>
+      <input type="text" id="checkinSearch" inputmode="numeric" placeholder="Type the number on the item">
+      <div id="checkinResult" style="margin-top:14px;"></div>
+    </div>
+  </div>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let items = [];
+let locations = ['Masdar', 'Airport Warehouse', 'Kizad'];
+let destinations = ['A9'];
+let flag = null;
+let photoData = null;
+let currentFilter = 'all';
+let syncUrl = localStorage.getItem('tagger-syncurl') || '';
+let masterList = [];
+try{
+  const rawMaster = localStorage.getItem('tagger-masterlist');
+  if(rawMaster) masterList = JSON.parse(rawMaster);
+}catch(e){ masterList = []; }
+
+const $ = id => document.getElementById(id);
+
+async function loadData(){
+  try{
+    const raw = localStorage.getItem('tagger-items');
+    items = raw ? JSON.parse(raw) : [];
+  }catch(e){ items = []; }
+  try{
+    const rawLoc = localStorage.getItem('tagger-locations');
+    if(rawLoc) locations = JSON.parse(rawLoc);
+  }catch(e){}
+  refreshLocSelect();
+  setNextStickerNum();
+  $('syncUrl').value = syncUrl;
+  updateSyncStatus();
+  renderList();
+}
+
+function updateSyncStatus(){
+  const pending = items.filter(i => !i.synced).length;
+  if(!syncUrl){
+    $('syncStatus').textContent = 'Not connected — saving on this device only.';
+  } else if(pending === 0){
+    $('syncStatus').textContent = 'Connected. All items sent.';
+  } else {
+    $('syncStatus').textContent = `Connected. ${pending} item(s) not yet sent — tap Resync.`;
+  }
+}
+
+function itemsEndpoint(){
+  return syncUrl.replace(/\/$/, '') + '/items';
+}
+
+function trySync(item){
+  if(!syncUrl) return;
+  fetch(itemsEndpoint(), {
+    method: 'POST',
+    mode: 'cors',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(item)
+  }).then(res => {
+    if(!res.ok) throw new Error('bad response');
+    return res.json();
+  }).then(() => {
+    item.synced = true;
+    saveItems();
+    updateSyncStatus();
+  }).catch(() => {
+    item.synced = false;
+    saveItems();
+    updateSyncStatus();
+  });
+}
+
+function trySyncCheckin(item, isOwn){
+  if(!syncUrl) return;
+  const payload = {
+    kind: 'checkin',
+    sticker: item.sticker,
+    receivedQty: item.receivedQty,
+    condition: item.condition,
+    checkedAt: item.checkedAt
+  };
+  fetch(itemsEndpoint(), {
+    method: 'POST',
+    mode: 'cors',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  }).then(res => {
+    if(!res.ok) throw new Error('bad response');
+    return res.json();
+  }).then(() => {
+    item.checkinSynced = true;
+    if(isOwn) saveItems(); else saveMasterList();
+    renderMasterStatus();
+  }).catch(() => {
+    item.checkinSynced = false;
+    if(isOwn) saveItems(); else saveMasterList();
+    renderMasterStatus();
+  });
+}
+
+$('saveSyncUrlBtn').addEventListener('click', () => {
+  syncUrl = $('syncUrl').value.trim();
+  localStorage.setItem('tagger-syncurl', syncUrl);
+  updateSyncStatus();
+  showToast(syncUrl ? 'Connected' : 'Cloud API URL cleared');
+  if(syncUrl) fetchMasterFromCloud(true);
+});
+
+$('resyncBtn').addEventListener('click', () => {
+  if(!syncUrl){ alert('Paste and save the Cloud API URL first.'); return; }
+  const pending = items.filter(i => !i.synced);
+  if(pending.length === 0){ showToast('Everything is already sent'); return; }
+  pending.forEach(i => trySync(i));
+  showToast(`Sending ${pending.length} item(s)...`);
+});
+
+async function saveItems(){
+  try{
+    localStorage.setItem('tagger-items', JSON.stringify(items));
+  }catch(e){
+    alert('Could not save — device storage may be full. Export your CSV now to be safe.');
+  }
+}
+async function saveLocations(){
+  localStorage.setItem('tagger-locations', JSON.stringify(locations));
+}
+function pad(n){ return String(n).padStart(5,'0'); }
+
+function computeNextNum(){
+  let maxNum = 0;
+  items.forEach(i => {
+    const n = parseInt(i.sticker, 10);
+    if(!isNaN(n) && n > maxNum) maxNum = n;
+  });
+  return maxNum + 1;
+}
+
+function setNextStickerNum(){
+  $('stickerNum').value = pad(computeNextNum());
+}
+
+function refreshLocSelect(){
+  const sel = $('itemLoc');
+  sel.innerHTML = locations.map(l => `<option>${l}</option>`).join('');
+  const destSel = $('itemDest');
+  destSel.innerHTML = destinations.map(d => `<option>${d}</option>`).join('');
+}
+
+function resizeImage(file, cb){
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      const maxW = 700;
+      const scale = Math.min(1, maxW / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      cb(canvas.toDataURL('image/jpeg', 0.6));
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function bindPhotoInput(){
+  const input = document.getElementById('photoInput');
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if(!file) return;
+    resizeImage(file, dataUrl => {
+      photoData = dataUrl;
+      $('photoBox').innerHTML = `<img src="${dataUrl}"><input type="file" accept="image/*" capture="environment" id="photoInput">`;
+      bindPhotoInput();
+      checkSaveEnabled();
+    });
+  };
+}
+bindPhotoInput();
+
+$('qtyMinus').addEventListener('click', () => {
+  const el = $('itemQty');
+  el.value = Math.max(0, parseInt(el.value || 0) - 1);
+});
+$('qtyPlus').addEventListener('click', () => {
+  const el = $('itemQty');
+  el.value = parseInt(el.value || 0) + 1;
+});
+
+function setFlag(f){
+  flag = f;
+  $('flagGreen').classList.toggle('on', f === 'green');
+  $('flagRed').classList.toggle('on', f === 'red');
+  checkSaveEnabled();
+}
+$('flagGreen').addEventListener('click', () => setFlag('green'));
+$('flagRed').addEventListener('click', () => setFlag('red'));
+
+function checkSaveEnabled(){
+  const name = $('itemName').value.trim();
+  const owner = $('itemOwner').value.trim();
+  $('saveBtn').disabled = !(name && owner && flag);
+}
+$('itemName').addEventListener('input', checkSaveEnabled);
+$('itemOwner').addEventListener('input', checkSaveEnabled);
+
+function showToast(msg){
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1400);
+}
+
+$('saveBtn').addEventListener('click', async () => {
+  const stickerVal = $('stickerNum').value.trim();
+  if(items.some(i => i.sticker === stickerVal)){
+    alert(`Sticker #${stickerVal} is already used. Pick a different number.`);
+    return;
+  }
+  const item = {
+    id: Date.now(),
+    sticker: stickerVal,
+    name: $('itemName').value.trim(),
+    type: $('itemType').value,
+    qty: parseInt($('itemQty').value || 0),
+    location: $('itemLoc').value,
+    destination: $('itemDest').value,
+    sublocation: $('itemSubloc').value.trim(),
+    owner: $('itemOwner').value.trim(),
+    flag: flag,
+    photo: photoData,
+    ts: new Date().toISOString(),
+    synced: false
+  };
+  items.unshift(item);
+  await saveItems();
+  trySync(item);
+  showToast(`Saved #${item.sticker} — ${item.name}`);
+  resetForm();
+  renderList();
+  updateHeaderCount();
+});
+
+function resetForm(){
+  $('itemName').value = '';
+  $('itemQty').value = 1;
+  $('itemSubloc').value = '';
+  $('itemOwner').value = '';
+  photoData = null;
+  $('photoBox').innerHTML = `<span id="photoPlaceholder">Tap to take photo</span><input type="file" accept="image/*" capture="environment" id="photoInput">`;
+  bindPhotoInput();
+  setFlag(null);
+  flag = null;
+  $('flagGreen').classList.remove('on');
+  $('flagRed').classList.remove('on');
+  setNextStickerNum();
+  $('saveBtn').disabled = true;
+}
+
+function updateHeaderCount(){
+  $('headerCount').textContent = `${items.length} logged`;
+}
+
+function renderList(){
+  updateHeaderCount();
+  updateSyncStatus();
+  const list = $('itemList');
+  const filtered = currentFilter === 'all' ? items : items.filter(i => i.flag === currentFilter);
+  if(filtered.length === 0){
+    list.innerHTML = `<div class="empty-state">No items yet.</div>`;
+    return;
+  }
+  list.innerHTML = filtered.map(i => `
+    <div class="item">
+      ${i.photo ? `<img class="thumb" src="${i.photo}">` : `<div class="thumb empty">no photo</div>`}
+      <div class="body">
+        <div class="top">
+          <span class="num">#${i.sticker}</span>
+          <span class="dot" style="background:${i.flag==='green' ? 'var(--green)' : 'var(--red)'}"></span>
+          ${syncUrl ? `<span style="font-size:11px;color:${i.synced ? 'var(--green)' : '#c98a1c'};">${i.synced ? '✓ sent' : '⏳ pending'}</span>` : ''}
+        </div>
+        <div class="name">${i.name}</div>
+        <div class="meta">${i.type} · qty ${i.qty} · ${i.location} → ${i.destination}${i.owner ? ' · ' + i.owner : ''}${i.sublocation ? ' · ' + i.sublocation : ''}</div>
+      </div>
+      <button class="del" data-id="${i.id}">×</button>
+    </div>
+  `).join('');
+  list.querySelectorAll('.del').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = parseInt(btn.dataset.id);
+      if(confirm('Delete this item?')){
+        items = items.filter(i => i.id !== id);
+        await saveItems();
+        renderList();
+      }
+    });
+  });
+}
+
+document.querySelectorAll('.filter-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    currentFilter = chip.dataset.filter;
+    renderList();
+  });
+});
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    $('addView').style.display = 'none';
+    $('listView').style.display = 'none';
+    $('checkinView').style.display = 'none';
+    if(tab.dataset.tab === 'add'){
+      $('addView').style.display = 'block';
+    } else if(tab.dataset.tab === 'list'){
+      $('listView').style.display = 'block';
+      renderList();
+    } else {
+      $('checkinView').style.display = 'block';
+      renderMasterStatus();
+      if(syncUrl) fetchMasterFromCloud(true);
+    }
+  });
+});
+
+$('exportBtn').addEventListener('click', () => {
+  const header = 'Sticker,Name,Type,Qty,Location,Destination,Owner,Flag,Timestamp,Rack/Cabin,Arrived\n';
+  const rows = items.map(i => [
+    i.sticker, `"${i.name.replace(/"/g,'""')}"`, i.type, i.qty, i.location, i.destination || '',
+    `"${(i.owner||'').replace(/"/g,'""')}"`, i.flag, i.ts,
+    `"${(i.sublocation||'').replace(/"/g,'""')}"`,
+    i.arrived ? 'Yes' : 'No'
+  ].join(','));
+  const csv = header + rows.join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'item-tags.csv';
+  a.click();
+});
+
+function parseCsv(text){
+  const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+  if(lines.length < 2) return [];
+  function splitLine(line){
+    const cells = []; let cur = ''; let inQuotes = false;
+    for(let i = 0; i < line.length; i++){
+      const c = line[i];
+      if(c === '"'){
+        if(inQuotes && line[i+1] === '"'){ cur += '"'; i++; }
+        else inQuotes = !inQuotes;
+      } else if(c === ',' && !inQuotes){
+        cells.push(cur); cur = '';
+      } else {
+        cur += c;
+      }
+    }
+    cells.push(cur);
+    return cells;
+  }
+  const headerCells = splitLine(lines[0]).map(h => h.trim().toLowerCase());
+  const idx = {
+    sticker: headerCells.indexOf('sticker'),
+    name: headerCells.indexOf('name'),
+    type: headerCells.indexOf('type'),
+    qty: headerCells.indexOf('qty'),
+    location: headerCells.indexOf('location'),
+    destination: headerCells.indexOf('destination'),
+    owner: headerCells.indexOf('owner'),
+    flag: headerCells.indexOf('flag'),
+    ts: headerCells.indexOf('timestamp'),
+    sublocation: headerCells.indexOf('rack/cabin'),
+    arrived: headerCells.indexOf('arrived'),
+    photo: headerCells.indexOf('photo link'),
+    receivedQty: headerCells.indexOf('received qty'),
+    condition: headerCells.indexOf('condition'),
+    checkedAt: headerCells.indexOf('checked at')
+  };
+  const out = [];
+  for(let i = 1; i < lines.length; i++){
+    const cells = splitLine(lines[i]);
+    const checkedAtVal = idx.checkedAt >= 0 ? cells[idx.checkedAt] : '';
+    const oldArrivedVal = idx.arrived >= 0 ? cells[idx.arrived] : '';
+    out.push({
+      sticker: idx.sticker >= 0 ? cells[idx.sticker] : '',
+      name: idx.name >= 0 ? cells[idx.name] : '',
+      type: idx.type >= 0 ? cells[idx.type] : '',
+      qty: idx.qty >= 0 ? cells[idx.qty] : '',
+      location: idx.location >= 0 ? cells[idx.location] : '',
+      destination: idx.destination >= 0 ? cells[idx.destination] : '',
+      owner: idx.owner >= 0 ? cells[idx.owner] : '',
+      flag: idx.flag >= 0 ? cells[idx.flag] : '',
+      ts: idx.ts >= 0 ? cells[idx.ts] : '',
+      sublocation: idx.sublocation >= 0 ? cells[idx.sublocation] : '',
+      arrived: (checkedAtVal && checkedAtVal.trim() !== '') || oldArrivedVal.trim().toLowerCase() === 'yes',
+      photo: idx.photo >= 0 ? cells[idx.photo] : '',
+      receivedQty: idx.receivedQty >= 0 ? cells[idx.receivedQty] : '',
+      condition: idx.condition >= 0 ? cells[idx.condition] : '',
+      checkedAt: checkedAtVal,
+      checkinSynced: true
+    });
+  }
+  return out;
+}
+
+function saveMasterList(){
+  localStorage.setItem('tagger-masterlist', JSON.stringify(masterList));
+}
+
+function sortByStickerNum(list){
+  return list.slice().sort((a, b) => {
+    const na = parseInt(a.sticker, 10), nb = parseInt(b.sticker, 10);
+    if(isNaN(na) && isNaN(nb)) return 0;
+    if(isNaN(na)) return 1;
+    if(isNaN(nb)) return -1;
+    return na - nb;
+  });
+}
+
+function mergeMasterList(freshList){
+  const pending = {};
+  masterList.forEach(i => {
+    if(i.checkinSynced === false) pending[i.sticker] = {
+      arrived: true, receivedQty: i.receivedQty, condition: i.condition,
+      checkedAt: i.checkedAt, checkinSynced: false
+    };
+  });
+  freshList.forEach(i => {
+    if(pending[i.sticker]) Object.assign(i, pending[i.sticker]);
+  });
+  masterList = sortByStickerNum(freshList);
+  saveMasterList();
+}
+
+function mapDbRow(row){
+  return {
+    sticker: row.sticker || '',
+    name: row.name || '',
+    type: row.type || '',
+    qty: row.qty,
+    location: row.location || '',
+    destination: row.destination || '',
+    sublocation: row.sublocation || '',
+    owner: row.owner || '',
+    flag: row.flag || '',
+    ts: row.ts || '',
+    photo: row.photo || '',
+    receivedQty: row.received_qty,
+    condition: row.condition || '',
+    checkedAt: row.checked_at || '',
+    arrived: !!(row.checked_at && String(row.checked_at).trim() !== ''),
+    checkinSynced: true
+  };
+}
+
+async function fetchMasterFromCloud(silent){
+  if(!syncUrl) return;
+  try{
+    const res = await fetch(itemsEndpoint(), {method: 'GET', mode: 'cors', cache: 'no-store'});
+    if(!res.ok) throw new Error('bad response');
+    const rows = await res.json();
+    if(!Array.isArray(rows)) throw new Error('bad shape');
+    const fresh = rows.map(mapDbRow);
+    mergeMasterList(fresh);
+    renderMasterStatus();
+    if(!silent) showToast(`Loaded ${masterList.length} items from cloud`);
+  }catch(e){
+    if(!silent) alert('Could not reach the Cloud API. Check the URL is saved on the Log tab, or import a CSV file manually below.');
+  }
+}
+
+$('refreshMasterBtn').addEventListener('click', () => {
+  if(!syncUrl){ alert('Save the Cloud API URL on the Log tab first.'); return; }
+  fetchMasterFromCloud(false);
+});
+
+$('masterCsvInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    mergeMasterList(parseCsv(ev.target.result));
+    renderMasterStatus();
+    showToast(`Loaded ${masterList.length} items`);
+  };
+  reader.readAsText(file);
+});
+
+function renderMasterStatus(){
+  const el = $('masterListStatus');
+  if(masterList.length === 0){
+    el.textContent = 'No master list loaded — searching your own log only.';
+  } else {
+    const arrivedCount = masterList.filter(i => i.arrived).length;
+    const damagedCount = masterList.filter(i => i.arrived && i.condition === 'damaged').length;
+    const mismatchCount = masterList.filter(i => i.arrived && i.receivedQty !== undefined && String(i.receivedQty) !== String(i.qty)).length;
+    let txt = `${masterList.length} items loaded, sorted by number · ${arrivedCount} received`;
+    if(damagedCount) txt += ` · ${damagedCount} damaged`;
+    if(mismatchCount) txt += ` · ${mismatchCount} qty mismatch`;
+    el.textContent = txt + '.';
+  }
+}
+
+function renderCheckinResult(sticker){
+  const box = $('checkinResult');
+  if(!sticker){ box.innerHTML = ''; return; }
+  let source = 'own', match = items.find(i => i.sticker === sticker);
+  if(!match){ match = masterList.find(i => i.sticker === sticker); source = 'master'; }
+  if(!match){
+    box.innerHTML = `<div class="empty-state">No item found with #${sticker}.</div>`;
+    return;
+  }
+  const expectedQty = match.qty;
+  const alreadyChecked = !!match.arrived;
+  const defaultReceived = (match.receivedQty !== undefined && match.receivedQty !== '') ? match.receivedQty : expectedQty;
+  const defaultCondition = match.condition || 'good';
+
+  box.innerHTML = `
+    <div class="item" style="margin-bottom:0;">
+      ${match.photo ? `<img class="thumb" src="${match.photo}">` : `<div class="thumb empty">no photo</div>`}
+      <div class="body">
+        <div class="top">
+          <span class="num">#${match.sticker}</span>
+          <span class="dot" style="background:${match.flag==='green' ? 'var(--green)' : 'var(--red)'}"></span>
+        </div>
+        <div class="name">${match.name}</div>
+        <div class="meta">${match.type} · expected qty ${expectedQty} · from ${match.location} → ${match.destination}${match.sublocation ? ' · ' + match.sublocation : ''}</div>
+      </div>
+    </div>
+
+    <label style="margin-top:14px;">Received quantity</label>
+    <div class="qty-row">
+      <button class="stepper" id="recvMinus">&minus;</button>
+      <input type="number" id="recvQty" value="${defaultReceived}" min="0">
+      <button class="stepper" id="recvPlus">+</button>
+    </div>
+
+    <label>Condition</label>
+    <div class="flag-row">
+      <button class="flag-btn green" id="condGood"><span class="dot"></span>Good</button>
+      <button class="flag-btn red" id="condDamaged"><span class="dot"></span>Damaged</button>
+    </div>
+
+    <button class="save-btn" id="confirmReceiptBtn" style="margin-top:14px; background:${alreadyChecked ? 'var(--green)' : 'var(--ink)'};">
+      ${alreadyChecked ? '✓ Receipt confirmed — tap to update' : 'Confirm receipt'}
+    </button>
+  `;
+
+  let condition = defaultCondition;
+  function setCond(c){
+    condition = c;
+    $('condGood').classList.toggle('on', c === 'good');
+    $('condDamaged').classList.toggle('on', c === 'damaged');
+  }
+  setCond(condition);
+  $('condGood').addEventListener('click', () => setCond('good'));
+  $('condDamaged').addEventListener('click', () => setCond('damaged'));
+  $('recvMinus').addEventListener('click', () => { const el = $('recvQty'); el.value = Math.max(0, parseInt(el.value || 0) - 1); });
+  $('recvPlus').addEventListener('click', () => { const el = $('recvQty'); el.value = parseInt(el.value || 0) + 1; });
+
+  $('confirmReceiptBtn').addEventListener('click', async () => {
+    match.arrived = true;
+    match.receivedQty = parseInt($('recvQty').value || 0);
+    match.condition = condition;
+    match.checkedAt = new Date().toISOString();
+    if(source === 'own'){ await saveItems(); } else { saveMasterList(); }
+    renderCheckinResult(sticker);
+    renderMasterStatus();
+    showToast(`#${sticker} receipt saved`);
+  });
+}
+
+$('checkinSearch').addEventListener('input', e => {
+  renderCheckinResult(e.target.value.trim());
+});
+
+loadData();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  // Deploy as a static site on Cloudflare (Workers Static Assets).
+  // It's a single static HTML file — no build step needed.
+  "name": "moving-helper",
+  "compatibility_date": "2025-01-01",
+  "assets": {
+    "directory": "./",
+    "not_found_handling": "single-page-application"
+  }
+}
