@@ -33,3 +33,6 @@ static assets).
    `wrangler.jsonc` automatically and deploy on every push to `main`
    (requires the GitHub connection to have access to this repo).
 2. Or, from the CLI with a Cloudflare API token: `npx wrangler deploy`.
+
+Now that this repo is public, Cloudflare's Git integration should redeploy
+automatically on every push to `main`.
