@@ -119,6 +119,13 @@
     flex-shrink:0; border:1px solid var(--line);
   }
   .item .thumb.empty{display:flex; align-items:center; justify-content:center; color:#c3c1b6; font-size:10px;}
+  .item .thumb:not(.empty){cursor:pointer;}
+  .lightbox{
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:100;
+    align-items:center; justify-content:center; padding:24px; cursor:pointer;
+  }
+  .lightbox.show{display:flex;}
+  .lightbox img{max-width:100%; max-height:100%; border-radius:8px;}
   .item .body{flex:1; min-width:0;}
   .item .top{display:flex; align-items:center; gap:7px; flex-wrap:wrap; row-gap:4px;}
   .item .num{font-family:var(--mono); font-weight:700; font-size:13.5px;}
@@ -264,11 +271,13 @@
   </div>
 
   <div id="listView" style="display:none;">
+    <input type="text" id="logSearch" placeholder="Search by sticker number or name" style="margin-bottom:12px;">
     <div class="filters" id="filters">
       <div class="filter-chip active" data-filter="all">All</div>
       <div class="filter-chip" data-filter="green">Required</div>
       <div class="filter-chip" data-filter="red">Not required</div>
     </div>
+    <div class="filters" id="logLocFilters"></div>
     <button class="export-btn" id="exportBtn">Export Excel</button>
     <div id="itemList"></div>
   </div>
@@ -300,6 +309,10 @@
 
 <div class="toast" id="toast"></div>
 
+<div class="lightbox" id="lightbox">
+  <img id="lightboxImg" alt="Photo">
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script>
 let items = [];
@@ -308,6 +321,8 @@ const A9_LOCATION = 'A9 Warehouse';
 let flag = null;
 let photoData = null;
 let currentFilter = 'all';
+let logSearchQuery = '';
+let logLocationFilter = 'all';
 let editingSticker = null;
 let defaultOwner = localStorage.getItem('tagger-defaultowner') || '';
 let defaultLocation = localStorage.getItem('tagger-defaultlocation') || '';
@@ -323,6 +338,24 @@ function escHtml(v){
 function photoSrc(raw){
   if(!raw) return '';
   return raw.startsWith('data:') ? raw : `/api/photos/${raw}`;
+}
+
+function openLightbox(src){
+  if(!src) return;
+  $('lightboxImg').src = src;
+  $('lightbox').classList.add('show');
+}
+$('lightbox').addEventListener('click', () => {
+  $('lightbox').classList.remove('show');
+  $('lightboxImg').src = '';
+});
+function bindThumbLightbox(container){
+  container.querySelectorAll('.thumb[data-lightbox]').forEach(img => {
+    img.addEventListener('click', e => {
+      e.stopPropagation();
+      openLightbox(img.dataset.lightbox);
+    });
+  });
 }
 
 async function uploadPhotoIfNeeded(photo){
@@ -450,6 +483,7 @@ async function loadData(){
 
   await saveItems();
   renderLocationChips();
+  renderLogLocFilters();
   setNextStickerNum();
   $('itemOwner').value = defaultOwner;
   updateOwnerDefaultTick();
@@ -718,17 +752,35 @@ function updateHeaderCount(){
   $('headerCount').textContent = `${items.length} logged${offline ? ' · offline' : ''}`;
 }
 
+function renderLogLocFilters(){
+  const el = $('logLocFilters');
+  el.innerHTML = '<div class="filter-chip active" data-locfilter="all">All locations</div>' +
+    locations.map(l => `<div class="filter-chip" data-locfilter="${escHtml(l)}">${escHtml(l)}</div>`).join('');
+  el.querySelectorAll('.filter-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      el.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      logLocationFilter = chip.dataset.locfilter;
+      renderList();
+    });
+  });
+}
+
 function renderList(){
   updateHeaderCount();
   const list = $('itemList');
-  const filtered = currentFilter === 'all' ? items : items.filter(i => i.flag === currentFilter);
+  const q = logSearchQuery.trim().toLowerCase();
+  let filtered = items;
+  if(currentFilter !== 'all') filtered = filtered.filter(i => i.flag === currentFilter);
+  if(logLocationFilter !== 'all') filtered = filtered.filter(i => i.location === logLocationFilter);
+  if(q) filtered = filtered.filter(i => i.sticker.includes(q) || i.name.toLowerCase().includes(q));
   if(filtered.length === 0){
     list.innerHTML = `<div class="empty-state">No items yet.</div>`;
     return;
   }
   list.innerHTML = filtered.map(i => `
     <div class="item">
-      ${i.photo ? `<img class="thumb" src="${photoSrc(i.photo)}">` : `<div class="thumb empty">no photo</div>`}
+      ${i.photo ? `<img class="thumb" src="${photoSrc(i.photo)}" data-lightbox="${escHtml(photoSrc(i.photo))}">` : `<div class="thumb empty">no photo</div>`}
       <div class="body">
         <div class="top">
           <span class="num">#${i.sticker}</span>
@@ -744,7 +796,13 @@ function renderList(){
   list.querySelectorAll('.edit-btn').forEach(btn => {
     btn.addEventListener('click', () => startEdit(btn.dataset.sticker));
   });
+  bindThumbLightbox(list);
 }
+
+$('logSearch').addEventListener('input', e => {
+  logSearchQuery = e.target.value;
+  renderList();
+});
 
 document.querySelectorAll('#filters .filter-chip').forEach(chip => {
   chip.addEventListener('click', () => {
@@ -884,7 +942,7 @@ function renderCheckinList(){
   }
   list.innerHTML = filtered.map(i => `
     <div class="item checkin-match" data-sticker="${escHtml(i.sticker)}" style="cursor:pointer;">
-      ${i.photo ? `<img class="thumb" src="${photoSrc(i.photo)}">` : `<div class="thumb empty">no photo</div>`}
+      ${i.photo ? `<img class="thumb" src="${photoSrc(i.photo)}" data-lightbox="${escHtml(photoSrc(i.photo))}">` : `<div class="thumb empty">no photo</div>`}
       <div class="body">
         <div class="top">
           <span class="num">#${i.sticker}</span>
@@ -902,6 +960,7 @@ function renderCheckinList(){
       renderCheckinMatches(el.dataset.sticker);
     });
   });
+  bindThumbLightbox(list);
 }
 
 let checkinSelectedSticker = null;
@@ -922,14 +981,9 @@ function renderCheckinMatches(query){
     checkinSelectedSticker = null;
     return;
   }
-  if(matches.length === 1){
-    matchesEl.innerHTML = '';
-    selectCheckinItem(matches[0].sticker);
-    return;
-  }
   matchesEl.innerHTML = matches.map(i => `
     <div class="item checkin-match" data-sticker="${escHtml(i.sticker)}" style="cursor:pointer;">
-      ${i.photo ? `<img class="thumb" src="${photoSrc(i.photo)}">` : `<div class="thumb empty">no photo</div>`}
+      ${i.photo ? `<img class="thumb" src="${photoSrc(i.photo)}" data-lightbox="${escHtml(photoSrc(i.photo))}">` : `<div class="thumb empty">no photo</div>`}
       <div class="body">
         <div class="top">
           <span class="num">#${i.sticker}</span>
@@ -942,6 +996,7 @@ function renderCheckinMatches(query){
   matchesEl.querySelectorAll('.checkin-match').forEach(el => {
     el.addEventListener('click', () => selectCheckinItem(el.dataset.sticker));
   });
+  bindThumbLightbox(matchesEl);
   if(checkinSelectedSticker && matches.some(m => m.sticker === checkinSelectedSticker)){
     renderCheckinResult(checkinSelectedSticker);
   } else {
@@ -969,7 +1024,7 @@ function renderCheckinResult(sticker){
 
   box.innerHTML = `
     <div class="item" style="margin-bottom:0;">
-      ${match.photo ? `<img class="thumb" src="${photoSrc(match.photo)}">` : `<div class="thumb empty">no photo</div>`}
+      ${match.photo ? `<img class="thumb" src="${photoSrc(match.photo)}" data-lightbox="${escHtml(photoSrc(match.photo))}">` : `<div class="thumb empty">no photo</div>`}
       <div class="body">
         <div class="top">
           <span class="num">#${match.sticker}</span>
@@ -997,10 +1052,17 @@ function renderCheckinResult(sticker){
       <button class="flag-btn red" id="condDamaged"><span class="dot"></span>Damaged</button>
     </div>
 
-    <button class="save-btn" id="confirmReceiptBtn" style="margin-top:14px; background:${alreadyChecked ? 'var(--green)' : 'var(--blue)'};">
-      ${alreadyChecked ? '✓ Receipt confirmed — tap to update' : 'Confirm receipt'}
-    </button>
+    ${alreadyChecked ? `
+      <div style="display:flex; gap:10px; margin-top:14px;">
+        <button class="save-btn" id="updateReceiptBtn" style="margin-top:0;">Update</button>
+        <button class="delete-btn" id="cancelReceiptBtn" style="margin-top:0; background:var(--panel); border-color:var(--line); color:#6b6a62;">Cancel</button>
+      </div>
+    ` : `
+      <button class="save-btn" id="confirmReceiptBtn">Confirm receipt</button>
+    `}
   `;
+
+  bindThumbLightbox(box);
 
   let condition = defaultCondition;
   function setCond(c){
@@ -1022,7 +1084,7 @@ function renderCheckinResult(sticker){
   $('recvPlus').addEventListener('click', () => { const el = $('recvQty'); el.value = Math.min(expectedQty, parseInt(el.value || 0) + 1); });
   $('recvQty').addEventListener('input', clampRecvQty);
 
-  $('confirmReceiptBtn').addEventListener('click', async () => {
+  async function saveReceipt(){
     clampRecvQty();
     const receivedQty = parseInt($('recvQty').value || 0);
     const checkedAt = new Date().toISOString();
@@ -1046,7 +1108,14 @@ function renderCheckinResult(sticker){
     renderCheckinList();
     renderCheckinMatches($('checkinSearch').value);
     showToast(isQtyMismatch(match) ? `#${sticker} saved — quantity mismatch flagged` : (match._dirty ? `#${sticker} saved locally — will sync when online` : `#${sticker} receipt saved`));
-  });
+  }
+
+  if(alreadyChecked){
+    $('updateReceiptBtn').addEventListener('click', saveReceipt);
+    $('cancelReceiptBtn').addEventListener('click', () => renderCheckinResult(sticker));
+  } else {
+    $('confirmReceiptBtn').addEventListener('click', saveReceipt);
+  }
 }
 
 $('checkinSearch').addEventListener('input', e => {
