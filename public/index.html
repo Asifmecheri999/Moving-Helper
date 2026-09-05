@@ -678,7 +678,7 @@ function escHtml(v){
   return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-async function downloadStyledExcel(filename, headers, rows, textCols = []){
+async function downloadStyledExcel(filename, headers, rows, textCols = [], photoCol = -1){
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Sheet1');
   const headerRow = ws.addRow(headers);
@@ -687,14 +687,29 @@ async function downloadStyledExcel(filename, headers, rows, textCols = []){
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     cell.alignment = { horizontal: 'center', vertical: 'middle' };
   });
-  rows.forEach(r => {
-    const row = ws.addRow(r);
+  rows.forEach((r, ri) => {
+    const rowValues = r.slice();
+    let photoDataUrl = null;
+    if(photoCol >= 0){
+      photoDataUrl = rowValues[photoCol];
+      rowValues[photoCol] = '';
+    }
+    const row = ws.addRow(rowValues);
     row.eachCell({ includeEmpty: true }, cell => {
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
     });
     textCols.forEach(ci => { row.getCell(ci + 1).numFmt = '@'; });
+    if(photoCol >= 0){
+      row.height = 46;
+      if(photoDataUrl){
+        try{
+          const imgId = wb.addImage({ base64: photoDataUrl, extension: 'jpeg' });
+          ws.addImage(imgId, { tl: { col: photoCol, row: ri + 1 }, ext: { width: 55, height: 55 } });
+        }catch(e){}
+      }
+    }
   });
-  ws.columns.forEach(col => { col.width = 18; });
+  ws.columns.forEach((col, ci) => { col.width = ci === photoCol ? 10 : 18; });
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   const url = URL.createObjectURL(blob);
@@ -706,12 +721,13 @@ async function downloadStyledExcel(filename, headers, rows, textCols = []){
 }
 
 $('exportBtn').addEventListener('click', () => {
-  const headers = ['Sticker','Name','Type','Packing','Qty','Current location','Exact Location','Location at A9','End User','Requirement','Timestamp'];
+  const headers = ['Sticker','Name','Type','Packing','Qty','Current location','Exact Location','Location at A9','End User','Requirement','Timestamp','Photo'];
   const rows = items.map(i => [
     i.sticker, i.name, i.type, i.packing || '', i.qty, i.location, i.locationDetail || '',
-    i.destinationDetail || '', i.owner || '', i.flag === 'green' ? 'Required' : 'Not required', i.ts
+    i.destinationDetail || '', i.owner || '', i.flag === 'green' ? 'Required' : 'Not required', i.ts,
+    i.photo || ''
   ]);
-  downloadStyledExcel('item-tags.xlsx', headers, rows, [0]);
+  downloadStyledExcel('item-tags.xlsx', headers, rows, [0], headers.length - 1);
 });
 
 function isQtyMismatch(i){
@@ -719,16 +735,17 @@ function isQtyMismatch(i){
 }
 
 $('exportCheckinBtn').addEventListener('click', () => {
-  const headers = ['Sticker','Name','Expected Qty','Received Qty','Status','Qty Flag','Condition','Checked At'];
+  const headers = ['Sticker','Name','Expected Qty','Received Qty','Status','Qty Flag','Condition','Checked At','Photo'];
   const rows = items.map(i => [
     i.sticker, i.name, i.qty,
     i.arrived ? (i.receivedQty ?? '') : '',
     i.arrived ? 'Received' : 'Pending to receive',
     isQtyMismatch(i) ? 'MISMATCH' : '',
     i.arrived ? (i.condition || '') : '',
-    i.arrived ? (i.checkedAt || '') : ''
+    i.arrived ? (i.checkedAt || '') : '',
+    i.photo || ''
   ]);
-  downloadStyledExcel('receiving-list.xlsx', headers, rows, [0]);
+  downloadStyledExcel('receiving-list.xlsx', headers, rows, [0], headers.length - 1);
 });
 
 function renderCheckinStatus(){
