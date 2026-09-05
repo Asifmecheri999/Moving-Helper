@@ -6,10 +6,13 @@
 <title>Moving Helper</title>
 <style>
   :root{
-    --ink:#1c1d1a;
-    --paper:#f2f1ec;
+    --ink:#0d1117;
+    --paper:#eef3fa;
     --panel:#ffffff;
-    --line:#d8d6cc;
+    --line:#d3deec;
+    --blue:#0b57d0;
+    --blue-dark:#083e99;
+    --blue-bg:#e3edfc;
     --green:#2f7d4f;
     --green-bg:#e4f2e8;
     --red:#b6412c;
@@ -25,7 +28,7 @@
     padding-bottom:40px;
   }
   header{
-    background:var(--ink); color:var(--paper);
+    background:var(--blue); color:#ffffff;
     padding:16px 16px 14px;
     display:flex; align-items:center; justify-content:flex-end;
     position:sticky; top:0; z-index:10;
@@ -43,20 +46,20 @@
     flex:1; text-align:center; padding:11px 4px; font-size:13.5px;
     color:#8a8a80; border-bottom:2px solid transparent; cursor:pointer;
   }
-  .tab.active{color:var(--ink); border-bottom-color:var(--ink); font-weight:600;}
+  .tab.active{color:var(--blue); border-bottom-color:var(--blue); font-weight:600;}
   main{padding:14px;}
   .card{
     background:var(--panel); border:1px solid var(--line); border-radius:10px;
     padding:14px; margin-bottom:12px;
   }
-  label{display:block; font-size:12.5px; color:#6b6a62; margin-bottom:6px; margin-top:14px;}
+  label{display:flex; align-items:baseline; flex-wrap:wrap; gap:6px; font-size:12.5px; color:#6b6a62; margin-bottom:6px; margin-top:14px;}
   label:first-of-type{margin-top:0;}
   input[type=text], input[type=number], select{
     width:100%; padding:10px 11px; border:1px solid var(--line); border-radius:8px;
     font-size:15px; background:var(--paper); color:var(--ink); font-family:var(--sans);
   }
-  input:focus, select:focus{outline:2px solid var(--ink); outline-offset:-1px;}
-  input[readonly]{background:#ecece4; color:#8a8a80;}
+  input:focus, select:focus{outline:2px solid var(--blue); outline-offset:-1px;}
+  input[readonly]{background:#e2eaf5; color:#7c8ba3;}
   .sticker-row{display:flex; gap:10px; align-items:flex-end;}
   .sticker-row > div{flex:1;}
   .sticker-num{
@@ -92,17 +95,18 @@
     background:var(--panel); font-size:clamp(9.5px, 3vw, 13.5px); color:#6b6a62; font-weight:500;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:center;
   }
-  .chip.on{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+  .chip.on{background:var(--blue); color:#fff; border-color:var(--blue);}
   .req{color:var(--red); font-weight:700;}
   .badge{
     font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:20px;
     background:var(--amber); color:#fff; white-space:nowrap;
   }
   .badge.received{background:var(--green);}
+  .badge.mismatch{background:var(--red);}
   .flag-btn.red.on .dot{background:var(--red);}
   .save-btn{
-    width:100%; padding:14px; border:none; border-radius:9px; background:var(--ink);
-    color:var(--paper); font-size:15.5px; font-weight:600; margin-top:16px;
+    width:100%; padding:14px; border:none; border-radius:9px; background:var(--blue);
+    color:#fff; font-size:15.5px; font-weight:600; margin-top:16px;
   }
   .save-btn:disabled{opacity:0.4;}
   .item{
@@ -115,7 +119,7 @@
   }
   .item .thumb.empty{display:flex; align-items:center; justify-content:center; color:#c3c1b6; font-size:10px;}
   .item .body{flex:1; min-width:0;}
-  .item .top{display:flex; align-items:center; gap:7px;}
+  .item .top{display:flex; align-items:center; gap:7px; flex-wrap:wrap; row-gap:4px;}
   .item .num{font-family:var(--mono); font-weight:700; font-size:13.5px;}
   .item .dot{width:9px; height:9px; border-radius:50%; flex-shrink:0;}
   .item .name{font-size:14.5px; font-weight:600; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
@@ -123,36 +127,38 @@
   .item .edit-btn{background:none; border:none; color:#8a8a80; font-size:17px; padding:4px 8px;}
   .edit-banner{
     display:flex; align-items:center; justify-content:space-between; gap:10px;
-    background:var(--green-bg); color:var(--green); border:1px solid var(--green);
+    background:var(--blue-bg); color:var(--blue-dark); border:1px solid var(--blue);
     border-radius:8px; padding:9px 12px; font-size:13px; font-weight:600; margin-bottom:14px;
   }
-  .edit-banner a{color:var(--green); text-decoration:underline; font-weight:600;}
+  .edit-banner a{color:var(--blue-dark); text-decoration:underline; font-weight:600;}
   .delete-btn{
     width:100%; padding:13px; border:1px solid var(--red); border-radius:9px; background:var(--red-bg);
     color:var(--red); font-size:14.5px; font-weight:600; margin-top:10px;
   }
-  .owner-row{display:flex; gap:8px;}
-  .owner-row input{flex:1;}
-  .default-btn{
-    padding:9px 13px; border-radius:20px; border:1.5px solid var(--line);
-    background:var(--panel); font-size:12px; color:#6b6a62; font-weight:600;
-    flex-shrink:0; white-space:nowrap;
+  .default-tick{
+    font-size:11.5px; font-weight:600; color:#8a94a6; cursor:pointer; user-select:none;
   }
-  .default-btn.on{background:var(--amber); border-color:var(--amber); color:#fff;}
+  .default-tick .box{
+    display:inline-block; width:13px; height:13px; border-radius:3px; border:1.5px solid var(--line);
+    background:var(--panel); vertical-align:middle; margin-right:3px; text-align:center; line-height:11px;
+    font-size:10px; color:#fff;
+  }
+  .default-tick.on{color:var(--blue-dark);}
+  .default-tick.on .box{background:var(--blue); border-color:var(--blue);}
   .empty-state{text-align:center; color:#8a8a80; font-size:13.5px; padding:40px 20px;}
   .filters{display:flex; gap:7px; margin-bottom:12px; overflow-x:auto; padding-bottom:2px;}
   .filter-chip{
     flex-shrink:0; padding:7px 13px; border-radius:20px; border:1px solid var(--line);
     background:var(--panel); font-size:12.5px; color:#6b6a62;
   }
-  .filter-chip.active{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+  .filter-chip.active{background:var(--blue); color:#fff; border-color:var(--blue);}
   .export-btn{
     width:100%; padding:12px; border-radius:9px; border:1px solid var(--line);
-    background:var(--panel); font-size:14px; font-weight:600; color:var(--ink); margin-bottom:12px;
+    background:var(--panel); font-size:14px; font-weight:600; color:var(--blue-dark); margin-bottom:12px;
   }
   .toast{
     position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
-    background:var(--ink); color:var(--paper); padding:10px 18px; border-radius:20px;
+    background:var(--ink); color:#fff; padding:10px 18px; border-radius:20px;
     font-size:13.5px; opacity:0; pointer-events:none; transition:opacity 0.2s;
   }
   .toast.show{opacity:1;}
@@ -217,9 +223,8 @@
         <button class="stepper" id="qtyPlus">+</button>
       </div>
 
-      <label>Location <span class="req">*</span></label>
+      <label>Current location <span class="req">*</span> <span class="default-tick" id="locDefaultTick"><span class="box"></span>make default</span></label>
       <div class="chip-group" id="itemLocGroup"></div>
-      <button type="button" class="default-btn" id="locDefaultBtn" style="margin-top:8px;">Default</button>
 
       <label>Exact location <span class="req">*</span></label>
       <input type="text" id="itemLocDetail" placeholder="e.g. Rack 3, Cabinet B">
@@ -242,16 +247,13 @@
         <option>Storage/Drone Repairs</option>
       </select>
 
-      <label>Team / owner <span class="req">*</span></label>
-      <div class="owner-row">
-        <input type="text" id="itemOwner" list="ownerOptions" placeholder="Who does this belong to?">
-        <button type="button" class="default-btn" id="ownerDefaultBtn">Default</button>
-      </div>
+      <label>End user <span class="req">*</span> <span class="default-tick" id="ownerDefaultTick"><span class="box"></span>make default</span></label>
+      <input type="text" id="itemOwner" list="ownerOptions" placeholder="Who does this belong to?">
       <datalist id="ownerOptions"></datalist>
 
-      <label>Take, or not? <span class="req">*</span></label>
+      <label>Item required or not required? <span class="req">*</span></label>
       <div class="flag-row">
-        <button class="flag-btn green" id="flagGreen"><span class="dot"></span>Take</button>
+        <button class="flag-btn green" id="flagGreen"><span class="dot"></span>Required</button>
         <button class="flag-btn red" id="flagRed"><span class="dot"></span>Not required</button>
       </div>
 
@@ -263,7 +265,7 @@
   <div id="listView" style="display:none;">
     <div class="filters" id="filters">
       <div class="filter-chip active" data-filter="all">All</div>
-      <div class="filter-chip" data-filter="green">Take</div>
+      <div class="filter-chip" data-filter="green">Required</div>
       <div class="filter-chip" data-filter="red">Not required</div>
     </div>
     <button class="export-btn" id="exportBtn">Export Excel</button>
@@ -282,7 +284,15 @@
       <div id="checkinResult" style="margin-top:14px;"></div>
     </div>
 
-    <button class="export-btn" id="exportCheckinBtn">Export receiving list (Excel)</button>
+    <div class="filters" id="checkinFilters">
+      <div class="filter-chip active" data-cfilter="all">All</div>
+      <div class="filter-chip" data-cfilter="pending">Pending</div>
+      <div class="filter-chip" data-cfilter="received">Received</div>
+      <div class="filter-chip" data-cfilter="mismatch">Mismatch</div>
+    </div>
+    <div id="checkinList"></div>
+
+    <button class="export-btn" id="exportCheckinBtn" style="margin-top:12px;">Export receiving list (Excel)</button>
   </div>
 
 </main>
@@ -330,22 +340,27 @@ function renderLocationChips(){
     c.addEventListener('click', () => {
       locationValue = c.dataset.value;
       group.querySelectorAll('.chip').forEach(x => x.classList.toggle('on', x.dataset.value === locationValue));
-      updateLocDefaultBtn();
+      updateLocDefaultTick();
       checkSaveEnabled();
     });
   });
-  updateLocDefaultBtn();
+  updateLocDefaultTick();
 }
 
-function updateLocDefaultBtn(){
-  $('locDefaultBtn').classList.toggle('on', !!locationValue && locationValue === defaultLocation);
+function setDefaultTick(el, isOn){
+  el.classList.toggle('on', isOn);
+  el.querySelector('.box').textContent = isOn ? '✓' : '';
 }
 
-$('locDefaultBtn').addEventListener('click', () => {
+function updateLocDefaultTick(){
+  setDefaultTick($('locDefaultTick'), !!locationValue && locationValue === defaultLocation);
+}
+
+$('locDefaultTick').addEventListener('click', () => {
   if(!locationValue) return;
   defaultLocation = (defaultLocation === locationValue) ? '' : locationValue;
   localStorage.setItem('tagger-defaultlocation', defaultLocation);
-  updateLocDefaultBtn();
+  updateLocDefaultTick();
   showToast(defaultLocation ? `"${defaultLocation}" set as default location` : 'Default location cleared');
 });
 
@@ -361,14 +376,14 @@ async function loadData(){
   renderLocationChips();
   setNextStickerNum();
   $('itemOwner').value = defaultOwner;
-  updateOwnerDefaultBtn();
+  updateOwnerDefaultTick();
   updateOwnerOptions();
   renderList();
 }
 
-function updateOwnerDefaultBtn(){
+function updateOwnerDefaultTick(){
   const val = $('itemOwner').value.trim();
-  $('ownerDefaultBtn').classList.toggle('on', !!val && val === defaultOwner);
+  setDefaultTick($('ownerDefaultTick'), !!val && val === defaultOwner);
 }
 
 function updateOwnerOptions(){
@@ -376,12 +391,12 @@ function updateOwnerOptions(){
   $('ownerOptions').innerHTML = names.map(n => `<option value="${n}"></option>`).join('');
 }
 
-$('ownerDefaultBtn').addEventListener('click', () => {
+$('ownerDefaultTick').addEventListener('click', () => {
   const val = $('itemOwner').value.trim();
   if(!val) return;
   defaultOwner = (defaultOwner === val) ? '' : val;
   localStorage.setItem('tagger-defaultowner', defaultOwner);
-  updateOwnerDefaultBtn();
+  updateOwnerDefaultTick();
   showToast(defaultOwner ? `"${defaultOwner}" set as default` : 'Default cleared');
 });
 
@@ -476,7 +491,7 @@ function checkSaveEnabled(){
 }
 $('itemName').addEventListener('input', checkSaveEnabled);
 $('itemLocDetail').addEventListener('input', checkSaveEnabled);
-$('itemOwner').addEventListener('input', () => { checkSaveEnabled(); updateOwnerDefaultBtn(); });
+$('itemOwner').addEventListener('input', () => { checkSaveEnabled(); updateOwnerDefaultTick(); });
 
 function showToast(msg){
   const t = $('toast');
@@ -559,7 +574,7 @@ function startEdit(id){
   $('editBannerNum').textContent = item.sticker;
   $('saveBtn').textContent = 'Update item';
   $('deleteItemBtn').style.display = 'block';
-  updateOwnerDefaultBtn();
+  updateOwnerDefaultTick();
   setFlag(item.flag || null);
   document.querySelector('.tab[data-tab="add"]').click();
 }
@@ -584,7 +599,7 @@ function resetForm(){
   $('editBanner').style.display = 'none';
   $('saveBtn').textContent = 'Save item';
   $('deleteItemBtn').style.display = 'none';
-  updateOwnerDefaultBtn();
+  updateOwnerDefaultTick();
   checkSaveEnabled();
 }
 
@@ -619,12 +634,22 @@ function renderList(){
   });
 }
 
-document.querySelectorAll('.filter-chip').forEach(chip => {
+document.querySelectorAll('#filters .filter-chip').forEach(chip => {
   chip.addEventListener('click', () => {
-    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('#filters .filter-chip').forEach(c => c.classList.remove('active'));
     chip.classList.add('active');
     currentFilter = chip.dataset.filter;
     renderList();
+  });
+});
+
+let checkinFilter = 'all';
+document.querySelectorAll('#checkinFilters .filter-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#checkinFilters .filter-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    checkinFilter = chip.dataset.cfilter;
+    renderCheckinList();
   });
 });
 
@@ -643,6 +668,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     } else {
       $('checkinView').style.display = 'block';
       renderCheckinStatus();
+      renderCheckinList();
     }
   });
 });
@@ -656,11 +682,15 @@ async function downloadStyledExcel(filename, headers, rows, textCols = []){
   const ws = wb.addWorksheet('Sheet1');
   const headerRow = ws.addRow(headers);
   headerRow.eachCell(cell => {
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1C1D1A' } };
-    cell.font = { bold: true, color: { argb: 'FFF2F1EC' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B57D0' } };
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
   });
   rows.forEach(r => {
     const row = ws.addRow(r);
+    row.eachCell({ includeEmpty: true }, cell => {
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
     textCols.forEach(ci => { row.getCell(ci + 1).numFmt = '@'; });
   });
   ws.columns.forEach(col => { col.width = 18; });
@@ -675,20 +705,25 @@ async function downloadStyledExcel(filename, headers, rows, textCols = []){
 }
 
 $('exportBtn').addEventListener('click', () => {
-  const headers = ['Sticker','Name','Type','Packing','Qty','Location','Exact Location','Location at A9','Owner','Take?','Timestamp','Arrived'];
+  const headers = ['Sticker','Name','Type','Packing','Qty','Location','Exact Location','Location at A9','End User','Required?','Timestamp','Arrived'];
   const rows = items.map(i => [
     i.sticker, i.name, i.type, i.packing || '', i.qty, i.location, i.locationDetail || '',
-    i.destinationDetail || '', i.owner || '', i.flag === 'green' ? 'Take' : 'Not required', i.ts,
+    i.destinationDetail || '', i.owner || '', i.flag === 'green' ? 'Required' : 'Not required', i.ts,
     i.arrived ? 'Yes' : 'No'
   ]);
   downloadStyledExcel('item-tags.xlsx', headers, rows, [0]);
 });
 
+function isQtyMismatch(i){
+  return i.arrived && i.receivedQty !== undefined && String(i.receivedQty) !== String(i.qty);
+}
+
 $('exportCheckinBtn').addEventListener('click', () => {
-  const headers = ['Sticker','Name','Expected Qty','Received Qty','Status','Condition','Checked At'];
+  const headers = ['Sticker','Name','Expected Qty','Received Qty','Qty Flag','Status','Condition','Checked At'];
   const rows = items.map(i => [
     i.sticker, i.name, i.qty,
     i.arrived ? (i.receivedQty ?? '') : '',
+    isQtyMismatch(i) ? 'MISMATCH' : '',
     i.arrived ? 'Received' : 'Pending to receive',
     i.arrived ? (i.condition || '') : '',
     i.arrived ? (i.checkedAt || '') : ''
@@ -704,11 +739,43 @@ function renderCheckinStatus(){
   }
   const arrivedCount = items.filter(i => i.arrived).length;
   const damagedCount = items.filter(i => i.arrived && i.condition === 'damaged').length;
-  const mismatchCount = items.filter(i => i.arrived && i.receivedQty !== undefined && String(i.receivedQty) !== String(i.qty)).length;
+  const mismatchCount = items.filter(isQtyMismatch).length;
   let txt = `${items.length} items logged · ${arrivedCount} received`;
   if(damagedCount) txt += ` · ${damagedCount} damaged`;
   if(mismatchCount) txt += ` · ${mismatchCount} qty mismatch`;
   el.textContent = txt + '.';
+}
+
+function renderCheckinList(){
+  const list = $('checkinList');
+  let filtered = items;
+  if(checkinFilter === 'pending') filtered = items.filter(i => !i.arrived);
+  else if(checkinFilter === 'received') filtered = items.filter(i => i.arrived);
+  else if(checkinFilter === 'mismatch') filtered = items.filter(isQtyMismatch);
+  if(filtered.length === 0){
+    list.innerHTML = `<div class="empty-state">No items here.</div>`;
+    return;
+  }
+  list.innerHTML = filtered.map(i => `
+    <div class="item checkin-match" data-sticker="${escHtml(i.sticker)}" style="cursor:pointer;">
+      ${i.photo ? `<img class="thumb" src="${i.photo}">` : `<div class="thumb empty">no photo</div>`}
+      <div class="body">
+        <div class="top">
+          <span class="num">#${i.sticker}</span>
+          <span class="badge ${i.arrived ? 'received' : ''}">${i.arrived ? 'Received' : 'Pending to receive'}</span>
+          ${isQtyMismatch(i) ? `<span class="badge mismatch">Qty mismatch</span>` : ''}
+        </div>
+        <div class="name">${i.name}</div>
+        <div class="meta">expected ${i.qty}${i.arrived ? ` · received ${i.receivedQty}` : ''}</div>
+      </div>
+    </div>
+  `).join('');
+  list.querySelectorAll('.checkin-match').forEach(el => {
+    el.addEventListener('click', () => {
+      $('checkinSearch').value = el.dataset.sticker;
+      renderCheckinMatches(el.dataset.sticker);
+    });
+  });
 }
 
 let checkinSelectedSticker = null;
@@ -782,11 +849,14 @@ function renderCheckinResult(sticker){
           <span class="num">#${match.sticker}</span>
           <span class="dot" style="background:${match.flag==='green' ? 'var(--green)' : 'var(--red)'}"></span>
           <span class="badge ${alreadyChecked ? 'received' : ''}">${alreadyChecked ? 'Received' : 'Pending to receive'}</span>
+          ${isQtyMismatch(match) ? `<span class="badge mismatch">Qty mismatch</span>` : ''}
         </div>
         <div class="name">${match.name}</div>
         <div class="meta">${match.type} · expected qty ${expectedQty} · from ${match.location}${match.locationDetail ? ' (' + match.locationDetail + ')' : ''} → ${match.destination}${match.destinationDetail ? ' (' + match.destinationDetail + ')' : ''}</div>
       </div>
     </div>
+
+    ${isQtyMismatch(match) ? `<div style="margin-top:10px; padding:9px 12px; border-radius:8px; background:var(--red-bg); color:var(--red); font-size:12.5px; font-weight:600;">⚠ Received ${match.receivedQty} of ${expectedQty} expected — flagged as a quantity mismatch.</div>` : ''}
 
     <label style="margin-top:14px;">Received quantity (max ${expectedQty})</label>
     <div class="qty-row">
@@ -801,7 +871,7 @@ function renderCheckinResult(sticker){
       <button class="flag-btn red" id="condDamaged"><span class="dot"></span>Damaged</button>
     </div>
 
-    <button class="save-btn" id="confirmReceiptBtn" style="margin-top:14px; background:${alreadyChecked ? 'var(--green)' : 'var(--ink)'};">
+    <button class="save-btn" id="confirmReceiptBtn" style="margin-top:14px; background:${alreadyChecked ? 'var(--green)' : 'var(--blue)'};">
       ${alreadyChecked ? '✓ Receipt confirmed — tap to update' : 'Confirm receipt'}
     </button>
   `;
@@ -834,8 +904,9 @@ function renderCheckinResult(sticker){
     match.checkedAt = new Date().toISOString();
     await saveItems();
     renderCheckinStatus();
+    renderCheckinList();
     renderCheckinMatches($('checkinSearch').value);
-    showToast(`#${sticker} receipt saved`);
+    showToast(isQtyMismatch(match) ? `#${sticker} saved — quantity mismatch flagged` : `#${sticker} receipt saved`);
   });
 }
 
