@@ -5,6 +5,21 @@ function jsonResponse(data, status = 200) {
   });
 }
 
+async function sha256Hex(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function getSession(request, env) {
+  const auth = request.headers.get('Authorization') || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (!token) return null;
+  const row = await env.DB.prepare('SELECT username FROM sessions WHERE token = ?').bind(token).first();
+  if (!row) return null;
+  const user = await env.DB.prepare('SELECT username, role FROM users WHERE username = ?').bind(row.username).first();
+  return user || null;
+}
+
 function rowToItem(row) {
   return {
     sticker: row.sticker,
@@ -23,8 +38,32 @@ function rowToItem(row) {
     receivedQty: row.received_qty,
     condition: row.condition,
     checkedAt: row.checked_at,
-    arrived: !!row.arrived
+    arrived: !!row.arrived,
+    createdBy: row.created_by
   };
+}
+
+async function login(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
+  const username = (body.username || '').trim();
+  const code = (body.code || '').trim();
+  if (!username || !code) return jsonResponse({ error: 'username and code required' }, 400);
+  const user = await env.DB.prepare('SELECT username, salt, code_hash, role FROM users WHERE username = ?').bind(username).first();
+  if (!user) return jsonResponse({ error: 'invalid username or code' }, 401);
+  const hash = await sha256Hex(user.salt + code);
+  if (hash !== user.code_hash) return jsonResponse({ error: 'invalid username or code' }, 401);
+  const token = crypto.randomUUID();
+  await env.DB.prepare('INSERT INTO sessions (token, username, created_at) VALUES (?, ?, ?)')
+    .bind(token, user.username, new Date().toISOString()).run();
+  return jsonResponse({ token, username: user.username, role: user.role });
+}
+
+async function logout(request, env) {
+  const auth = request.headers.get('Authorization') || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (token) await env.DB.prepare('DELETE FROM sessions WHERE token = ?').bind(token).run();
+  return jsonResponse({ ok: true });
 }
 
 async function listItems(env) {
@@ -32,18 +71,19 @@ async function listItems(env) {
   return jsonResponse(results.map(rowToItem));
 }
 
-async function createItem(request, env) {
+async function createItem(request, env, session) {
   let body;
   try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
   if (!body.sticker || !body.name) return jsonResponse({ error: 'sticker and name required' }, 400);
   try {
     await env.DB.prepare(
-      `INSERT INTO items (sticker, name, type, packing, qty, location, location_detail, destination, destination_detail, owner, flag, photo_key, ts)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO items (sticker, name, type, packing, qty, location, location_detail, destination, destination_detail, owner, flag, photo_key, ts, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       body.sticker, body.name, body.type || '', body.packing || '', body.qty || 0,
       body.location || '', body.locationDetail || '', body.destination || '', body.destinationDetail || '',
-      body.owner || '', body.flag || '', body.photo || null, body.ts || new Date().toISOString()
+      body.owner || '', body.flag || '', body.photo || null, body.ts || new Date().toISOString(),
+      session.username
     ).run();
   } catch (e) {
     if (String(e.message || e).includes('UNIQUE')) {
@@ -62,7 +102,12 @@ const UPDATABLE_FIELDS = {
   receivedQty: 'received_qty', condition: 'condition', checkedAt: 'checked_at', arrived: 'arrived'
 };
 
-async function updateItem(sticker, request, env) {
+async function updateItem(sticker, request, env, session) {
+  const existing = await env.DB.prepare('SELECT created_by FROM items WHERE sticker = ?').bind(sticker).first();
+  if (!existing) return jsonResponse({ error: 'not found' }, 404);
+  if (session.role !== 'admin' && existing.created_by !== session.username) {
+    return jsonResponse({ error: 'forbidden' }, 403);
+  }
   let body;
   try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
   const sets = [];
@@ -75,15 +120,18 @@ async function updateItem(sticker, request, env) {
   }
   if (sets.length === 0) return jsonResponse({ error: 'nothing to update' }, 400);
   values.push(sticker);
-  const result = await env.DB.prepare(`UPDATE items SET ${sets.join(', ')} WHERE sticker = ?`).bind(...values).run();
-  if (!result.meta.changes) return jsonResponse({ error: 'not found' }, 404);
+  await env.DB.prepare(`UPDATE items SET ${sets.join(', ')} WHERE sticker = ?`).bind(...values).run();
   return jsonResponse({ ok: true });
 }
 
-async function deleteItem(sticker, env) {
-  const row = await env.DB.prepare('SELECT photo_key FROM items WHERE sticker = ?').bind(sticker).first();
+async function deleteItem(sticker, env, session) {
+  const row = await env.DB.prepare('SELECT photo_key, created_by FROM items WHERE sticker = ?').bind(sticker).first();
+  if (!row) return jsonResponse({ error: 'not found' }, 404);
+  if (session.role !== 'admin' && row.created_by !== session.username) {
+    return jsonResponse({ error: 'forbidden' }, 403);
+  }
   await env.DB.prepare('DELETE FROM items WHERE sticker = ?').bind(sticker).run();
-  if (row && row.photo_key) {
+  if (row.photo_key) {
     try { await env.PHOTOS.delete(row.photo_key); } catch (e) {}
   }
   return jsonResponse({ ok: true });
@@ -108,24 +156,79 @@ async function getPhoto(key, env) {
   });
 }
 
+async function listUsers(env) {
+  const { results } = await env.DB.prepare('SELECT username, role, created_at FROM users ORDER BY username').all();
+  return jsonResponse(results);
+}
+
+async function createUser(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
+  const username = (body.username || '').trim();
+  const code = (body.code || '').trim();
+  if (!username || !/^\d{4}$/.test(code)) return jsonResponse({ error: 'username and 4-digit code required' }, 400);
+  const salt = crypto.randomUUID();
+  const codeHash = await sha256Hex(salt + code);
+  try {
+    await env.DB.prepare('INSERT INTO users (username, salt, code_hash, role, created_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(username, salt, codeHash, 'user', new Date().toISOString()).run();
+  } catch (e) {
+    if (String(e.message || e).includes('UNIQUE')) return jsonResponse({ error: 'username already exists' }, 409);
+    return jsonResponse({ error: String(e.message || e) }, 500);
+  }
+  return jsonResponse({ ok: true }, 201);
+}
+
+async function deleteUser(username, env) {
+  if (username === 'adminasif') return jsonResponse({ error: 'cannot delete the primary admin' }, 403);
+  await env.DB.prepare('DELETE FROM users WHERE username = ?').bind(username).run();
+  return jsonResponse({ ok: true });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    if (path === '/api/items' && request.method === 'GET') return listItems(env);
-    if (path === '/api/items' && request.method === 'POST') return createItem(request, env);
+    if (path === '/api/login' && request.method === 'POST') return login(request, env);
 
-    let m = path.match(/^\/api\/items\/([^/]+)$/);
-    if (m) {
-      const sticker = decodeURIComponent(m[1]);
-      if (request.method === 'PATCH') return updateItem(sticker, request, env);
-      if (request.method === 'DELETE') return deleteItem(sticker, env);
+    if (path.startsWith('/api/photos/') && request.method === 'GET') {
+      return getPhoto(decodeURIComponent(path.slice('/api/photos/'.length)), env);
     }
 
-    if (path === '/api/photos' && request.method === 'POST') return uploadPhoto(request, env);
-    m = path.match(/^\/api\/photos\/([^/]+)$/);
-    if (m && request.method === 'GET') return getPhoto(decodeURIComponent(m[1]), env);
+    if (path.startsWith('/api/')) {
+      const session = await getSession(request, env);
+      if (!session) return jsonResponse({ error: 'unauthorized' }, 401);
+
+      if (path === '/api/logout' && request.method === 'POST') return logout(request, env);
+      if (path === '/api/items' && request.method === 'GET') return listItems(env);
+      if (path === '/api/items' && request.method === 'POST') return createItem(request, env, session);
+
+      let m = path.match(/^\/api\/items\/([^/]+)$/);
+      if (m) {
+        const sticker = decodeURIComponent(m[1]);
+        if (request.method === 'PATCH') return updateItem(sticker, request, env, session);
+        if (request.method === 'DELETE') return deleteItem(sticker, env, session);
+      }
+
+      if (path === '/api/photos' && request.method === 'POST') return uploadPhoto(request, env);
+
+      if (path === '/api/users' && request.method === 'GET') {
+        if (session.role !== 'admin') return jsonResponse({ error: 'forbidden' }, 403);
+        return listUsers(env);
+      }
+      if (path === '/api/users' && request.method === 'POST') {
+        if (session.role !== 'admin') return jsonResponse({ error: 'forbidden' }, 403);
+        return createUser(request, env);
+      }
+      m = path.match(/^\/api\/users\/([^/]+)$/);
+      if (m && request.method === 'DELETE') {
+        if (session.role !== 'admin') return jsonResponse({ error: 'forbidden' }, 403);
+        return deleteUser(decodeURIComponent(m[1]), env);
+      }
+
+      return jsonResponse({ error: 'not found' }, 404);
+    }
 
     return env.ASSETS.fetch(request);
   }

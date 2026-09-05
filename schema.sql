@@ -15,5 +15,20 @@ CREATE TABLE IF NOT EXISTS items (
   received_qty INTEGER,
   condition TEXT,
   checked_at TEXT,
-  arrived INTEGER DEFAULT 0
+  arrived INTEGER DEFAULT 0,
+  created_by TEXT
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  username TEXT PRIMARY KEY,
+  salt TEXT NOT NULL,
+  code_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'user',
+  created_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token TEXT PRIMARY KEY,
+  username TEXT NOT NULL,
+  created_at TEXT
 );
