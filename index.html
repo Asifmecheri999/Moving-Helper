@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Item Tagger</title>
+<title>Moving Helper</title>
 <style>
   :root{
     --ink:#1c1d1a;
@@ -27,10 +27,13 @@
   header{
     background:var(--ink); color:var(--paper);
     padding:16px 16px 14px;
-    display:flex; align-items:center; justify-content:space-between;
+    display:flex; align-items:center; justify-content:flex-end;
     position:sticky; top:0; z-index:10;
   }
-  header h1{font-size:16px; margin:0; font-weight:600; letter-spacing:0.2px;}
+  header h1{
+    font-size:16px; margin:0; font-weight:600; letter-spacing:0.2px;
+    position:absolute; left:50%; transform:translateX(-50%);
+  }
   header .count{font-family:var(--mono); font-size:13px; opacity:0.75;}
   .tabs{
     display:flex; background:var(--panel); border-bottom:1px solid var(--line);
@@ -53,6 +56,7 @@
     font-size:15px; background:var(--paper); color:var(--ink); font-family:var(--sans);
   }
   input:focus, select:focus{outline:2px solid var(--ink); outline-offset:-1px;}
+  input[readonly]{background:#ecece4; color:#8a8a80;}
   .sticker-row{display:flex; gap:10px; align-items:flex-end;}
   .sticker-row > div{flex:1;}
   .sticker-num{
@@ -103,7 +107,24 @@
   .item .dot{width:9px; height:9px; border-radius:50%; flex-shrink:0;}
   .item .name{font-size:14.5px; font-weight:600; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .item .meta{font-size:12px; color:#8a8a80; margin-top:2px;}
-  .item .del{background:none; border:none; color:#c3c1b6; font-size:19px; padding:4px 8px;}
+  .item .edit-btn{background:none; border:none; color:#8a8a80; font-size:17px; padding:4px 8px;}
+  .edit-banner{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--green-bg); color:var(--green); border:1px solid var(--green);
+    border-radius:8px; padding:9px 12px; font-size:13px; font-weight:600; margin-bottom:14px;
+  }
+  .edit-banner a{color:var(--green); text-decoration:underline; font-weight:600;}
+  .delete-btn{
+    width:100%; padding:13px; border:1px solid var(--red); border-radius:9px; background:var(--red-bg);
+    color:var(--red); font-size:14.5px; font-weight:600; margin-top:10px;
+  }
+  .owner-row{display:flex; gap:8px;}
+  .owner-row input{flex:1;}
+  .star-btn{
+    width:42px; height:42px; border-radius:8px; border:1px solid var(--line);
+    background:var(--panel); font-size:18px; color:#8a8a80; flex-shrink:0;
+  }
+  .star-btn.on{color:var(--amber); border-color:var(--amber);}
   .empty-state{text-align:center; color:#8a8a80; font-size:13.5px; padding:40px 20px;}
   .filters{display:flex; gap:7px; margin-bottom:12px; overflow-x:auto; padding-bottom:2px;}
   .filter-chip{
@@ -126,7 +147,7 @@
 <body>
 
 <header>
-  <h1>Item Tagger</h1>
+  <h1>Moving Helper</h1>
   <span class="count" id="headerCount">0 logged</span>
 </header>
 
@@ -140,6 +161,10 @@
 
   <div id="addView">
     <div class="card">
+      <div class="edit-banner" id="editBanner" style="display:none;">
+        <span>Editing #<span id="editBannerNum"></span></span>
+        <a href="#" id="cancelEditLink">Cancel</a>
+      </div>
       <label>Photo</label>
       <div class="photo-box" id="photoBox">
         <span id="photoPlaceholder">Tap to take photo</span>
@@ -164,6 +189,13 @@
         <option>Accessory</option>
       </select>
 
+      <label>Packing condition</label>
+      <select id="itemPacking">
+        <option>In box</option>
+        <option>Bag</option>
+        <option>Unpacked</option>
+      </select>
+
       <label>Quantity</label>
       <div class="qty-row">
         <button class="stepper" id="qtyMinus">&minus;</button>
@@ -174,14 +206,21 @@
       <label>Location</label>
       <select id="itemLoc"></select>
 
+      <label>Exact location (leave blank if unknown)</label>
+      <input type="text" id="itemLocDetail" placeholder="e.g. Building 3, Room 2">
+
       <label>Move to</label>
       <select id="itemDest"></select>
 
-      <label>Rack / cabin no. (leave blank if unknown)</label>
-      <input type="text" id="itemSubloc" placeholder="e.g. Rack 3, Cabin B">
+      <label>Exact location at destination (leave blank if unknown)</label>
+      <input type="text" id="itemDestDetail" placeholder="e.g. Shelf 4, Rack B">
 
       <label>Team / owner</label>
-      <input type="text" id="itemOwner" placeholder="Who does this belong to?">
+      <div class="owner-row">
+        <input type="text" id="itemOwner" list="ownerOptions" placeholder="Who does this belong to?">
+        <button type="button" class="star-btn" id="ownerDefaultBtn" title="Set/unset as default">&starf;</button>
+      </div>
+      <datalist id="ownerOptions"></datalist>
 
       <label>Take, or not?</label>
       <div class="flag-row">
@@ -190,32 +229,23 @@
       </div>
 
       <button class="save-btn" id="saveBtn" disabled>Save item</button>
+      <button class="delete-btn" id="deleteItemBtn" style="display:none;">Delete item</button>
     </div>
   </div>
 
   <div id="listView" style="display:none;">
-    <div class="card" id="syncCard">
-      <label>Cloud API URL</label>
-      <input type="text" id="syncUrl" placeholder="Paste your Cloudflare Worker URL">
-      <button class="export-btn" id="saveSyncUrlBtn" style="margin-top:10px;">Save & connect</button>
-      <div id="syncStatus" style="font-size:12px;color:#8a8a80;margin-top:8px;"></div>
-    </div>
     <div class="filters" id="filters">
       <div class="filter-chip active" data-filter="all">All</div>
       <div class="filter-chip" data-filter="green">Take</div>
       <div class="filter-chip" data-filter="red">Not required</div>
     </div>
     <button class="export-btn" id="exportBtn">Export CSV</button>
-    <button class="export-btn" id="resyncBtn">Resync all to cloud</button>
     <div id="itemList"></div>
   </div>
 
   <div id="checkinView" style="display:none;">
     <div class="card">
-      <button class="export-btn" id="refreshMasterBtn">Refresh from cloud</button>
-      <div id="masterListStatus" style="font-size:12px; color:#8a8a80; margin-top:4px;">No master list loaded &mdash; searching your own log only.</div>
-      <label style="margin-top:16px;">Or import a CSV file manually (offline fallback)</label>
-      <input type="file" accept=".csv" id="masterCsvInput">
+      <div id="checkinStatus" style="font-size:12px; color:#8a8a80;">No items logged yet.</div>
     </div>
 
     <div class="card">
@@ -232,16 +262,12 @@
 <script>
 let items = [];
 let locations = ['Masdar', 'Airport Warehouse', 'Kizad'];
-let destinations = ['A9'];
+let destinations = ['A9 Warehouse'];
 let flag = null;
 let photoData = null;
 let currentFilter = 'all';
-let syncUrl = localStorage.getItem('tagger-syncurl') || '';
-let masterList = [];
-try{
-  const rawMaster = localStorage.getItem('tagger-masterlist');
-  if(rawMaster) masterList = JSON.parse(rawMaster);
-}catch(e){ masterList = []; }
+let editingId = null;
+let defaultOwner = localStorage.getItem('tagger-defaultowner') || '';
 
 const $ = id => document.getElementById(id);
 
@@ -256,89 +282,29 @@ async function loadData(){
   }catch(e){}
   refreshLocSelect();
   setNextStickerNum();
-  $('syncUrl').value = syncUrl;
-  updateSyncStatus();
+  $('itemOwner').value = defaultOwner;
+  updateOwnerStar();
+  updateOwnerOptions();
   renderList();
 }
 
-function updateSyncStatus(){
-  const pending = items.filter(i => !i.synced).length;
-  if(!syncUrl){
-    $('syncStatus').textContent = 'Not connected — saving on this device only.';
-  } else if(pending === 0){
-    $('syncStatus').textContent = 'Connected. All items sent.';
-  } else {
-    $('syncStatus').textContent = `Connected. ${pending} item(s) not yet sent — tap Resync.`;
-  }
+function updateOwnerStar(){
+  const val = $('itemOwner').value.trim();
+  $('ownerDefaultBtn').classList.toggle('on', !!val && val === defaultOwner);
 }
 
-function itemsEndpoint(){
-  return syncUrl.replace(/\/$/, '') + '/items';
+function updateOwnerOptions(){
+  const names = Array.from(new Set(items.map(i => i.owner).filter(Boolean))).sort();
+  $('ownerOptions').innerHTML = names.map(n => `<option value="${n}"></option>`).join('');
 }
 
-function trySync(item){
-  if(!syncUrl) return;
-  fetch(itemsEndpoint(), {
-    method: 'POST',
-    mode: 'cors',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(item)
-  }).then(res => {
-    if(!res.ok) throw new Error('bad response');
-    return res.json();
-  }).then(() => {
-    item.synced = true;
-    saveItems();
-    updateSyncStatus();
-  }).catch(() => {
-    item.synced = false;
-    saveItems();
-    updateSyncStatus();
-  });
-}
-
-function trySyncCheckin(item, isOwn){
-  if(!syncUrl) return;
-  const payload = {
-    kind: 'checkin',
-    sticker: item.sticker,
-    receivedQty: item.receivedQty,
-    condition: item.condition,
-    checkedAt: item.checkedAt
-  };
-  fetch(itemsEndpoint(), {
-    method: 'POST',
-    mode: 'cors',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(payload)
-  }).then(res => {
-    if(!res.ok) throw new Error('bad response');
-    return res.json();
-  }).then(() => {
-    item.checkinSynced = true;
-    if(isOwn) saveItems(); else saveMasterList();
-    renderMasterStatus();
-  }).catch(() => {
-    item.checkinSynced = false;
-    if(isOwn) saveItems(); else saveMasterList();
-    renderMasterStatus();
-  });
-}
-
-$('saveSyncUrlBtn').addEventListener('click', () => {
-  syncUrl = $('syncUrl').value.trim();
-  localStorage.setItem('tagger-syncurl', syncUrl);
-  updateSyncStatus();
-  showToast(syncUrl ? 'Connected' : 'Cloud API URL cleared');
-  if(syncUrl) fetchMasterFromCloud(true);
-});
-
-$('resyncBtn').addEventListener('click', () => {
-  if(!syncUrl){ alert('Paste and save the Cloud API URL first.'); return; }
-  const pending = items.filter(i => !i.synced);
-  if(pending.length === 0){ showToast('Everything is already sent'); return; }
-  pending.forEach(i => trySync(i));
-  showToast(`Sending ${pending.length} item(s)...`);
+$('ownerDefaultBtn').addEventListener('click', () => {
+  const val = $('itemOwner').value.trim();
+  if(!val) return;
+  defaultOwner = (defaultOwner === val) ? '' : val;
+  localStorage.setItem('tagger-defaultowner', defaultOwner);
+  updateOwnerStar();
+  showToast(defaultOwner ? `"${defaultOwner}" set as default` : 'Default cleared');
 });
 
 async function saveItems(){
@@ -392,15 +358,21 @@ function resizeImage(file, cb){
   reader.readAsDataURL(file);
 }
 
+function setPhotoBox(url){
+  photoData = url;
+  $('photoBox').innerHTML = url
+    ? `<img src="${url}"><input type="file" accept="image/*" capture="environment" id="photoInput">`
+    : `<span id="photoPlaceholder">Tap to take photo</span><input type="file" accept="image/*" capture="environment" id="photoInput">`;
+  bindPhotoInput();
+}
+
 function bindPhotoInput(){
   const input = document.getElementById('photoInput');
   input.onchange = e => {
     const file = e.target.files[0];
     if(!file) return;
     resizeImage(file, dataUrl => {
-      photoData = dataUrl;
-      $('photoBox').innerHTML = `<img src="${dataUrl}"><input type="file" accept="image/*" capture="environment" id="photoInput">`;
-      bindPhotoInput();
+      setPhotoBox(dataUrl);
       checkSaveEnabled();
     });
   };
@@ -431,7 +403,7 @@ function checkSaveEnabled(){
   $('saveBtn').disabled = !(name && owner && flag);
 }
 $('itemName').addEventListener('input', checkSaveEnabled);
-$('itemOwner').addEventListener('input', checkSaveEnabled);
+$('itemOwner').addEventListener('input', () => { checkSaveEnabled(); updateOwnerStar(); });
 
 function showToast(msg){
   const t = $('toast');
@@ -442,48 +414,102 @@ function showToast(msg){
 
 $('saveBtn').addEventListener('click', async () => {
   const stickerVal = $('stickerNum').value.trim();
-  if(items.some(i => i.sticker === stickerVal)){
+  if(!editingId && items.some(i => i.sticker === stickerVal)){
     alert(`Sticker #${stickerVal} is already used. Pick a different number.`);
     return;
   }
-  const item = {
-    id: Date.now(),
-    sticker: stickerVal,
+  const fields = {
     name: $('itemName').value.trim(),
     type: $('itemType').value,
+    packing: $('itemPacking').value,
     qty: parseInt($('itemQty').value || 0),
     location: $('itemLoc').value,
+    locationDetail: $('itemLocDetail').value.trim(),
     destination: $('itemDest').value,
-    sublocation: $('itemSubloc').value.trim(),
+    destinationDetail: $('itemDestDetail').value.trim(),
     owner: $('itemOwner').value.trim(),
     flag: flag,
-    photo: photoData,
-    ts: new Date().toISOString(),
-    synced: false
+    photo: photoData
   };
-  items.unshift(item);
-  await saveItems();
-  trySync(item);
-  showToast(`Saved #${item.sticker} — ${item.name}`);
-  resetForm();
+
+  if(editingId){
+    const item = items.find(i => i.id === editingId);
+    if(item) Object.assign(item, fields);
+    await saveItems();
+    showToast(`Updated #${stickerVal}`);
+    resetForm();
+    document.querySelector('.tab[data-tab="list"]').click();
+  } else {
+    const item = { id: Date.now(), sticker: stickerVal, ...fields, ts: new Date().toISOString() };
+    items.unshift(item);
+    await saveItems();
+    showToast(`Saved #${item.sticker} — ${item.name}`);
+    resetForm();
+  }
+  updateOwnerOptions();
   renderList();
   updateHeaderCount();
 });
 
+$('cancelEditLink').addEventListener('click', e => { e.preventDefault(); resetForm(); });
+
+$('deleteItemBtn').addEventListener('click', async () => {
+  if(!editingId) return;
+  const item = items.find(i => i.id === editingId);
+  if(!confirm(`Delete #${item ? item.sticker : ''}? This can't be undone.`)) return;
+  items = items.filter(i => i.id !== editingId);
+  await saveItems();
+  showToast('Item deleted');
+  resetForm();
+  renderList();
+  updateHeaderCount();
+  document.querySelector('.tab[data-tab="list"]').click();
+});
+
+function startEdit(id){
+  const item = items.find(i => i.id === id);
+  if(!item) return;
+  editingId = id;
+  $('stickerNum').value = item.sticker;
+  $('stickerNum').readOnly = true;
+  $('itemName').value = item.name;
+  $('itemType').value = item.type;
+  $('itemPacking').value = item.packing || 'In box';
+  $('itemQty').value = item.qty;
+  $('itemLoc').value = item.location;
+  $('itemLocDetail').value = item.locationDetail || '';
+  $('itemDest').value = item.destination;
+  $('itemDestDetail').value = item.destinationDetail || '';
+  $('itemOwner').value = item.owner || '';
+  setPhotoBox(item.photo || null);
+  $('editBanner').style.display = 'flex';
+  $('editBannerNum').textContent = item.sticker;
+  $('saveBtn').textContent = 'Update item';
+  $('deleteItemBtn').style.display = 'block';
+  updateOwnerStar();
+  setFlag(item.flag || null);
+  document.querySelector('.tab[data-tab="add"]').click();
+}
+
 function resetForm(){
+  editingId = null;
   $('itemName').value = '';
   $('itemQty').value = 1;
-  $('itemSubloc').value = '';
-  $('itemOwner').value = '';
-  photoData = null;
-  $('photoBox').innerHTML = `<span id="photoPlaceholder">Tap to take photo</span><input type="file" accept="image/*" capture="environment" id="photoInput">`;
-  bindPhotoInput();
+  $('itemPacking').selectedIndex = 0;
+  $('itemLocDetail').value = '';
+  $('itemDestDetail').value = '';
+  $('itemOwner').value = defaultOwner;
+  setPhotoBox(null);
   setFlag(null);
-  flag = null;
   $('flagGreen').classList.remove('on');
   $('flagRed').classList.remove('on');
   setNextStickerNum();
-  $('saveBtn').disabled = true;
+  $('stickerNum').readOnly = false;
+  $('editBanner').style.display = 'none';
+  $('saveBtn').textContent = 'Save item';
+  $('deleteItemBtn').style.display = 'none';
+  updateOwnerStar();
+  checkSaveEnabled();
 }
 
 function updateHeaderCount(){
@@ -492,7 +518,6 @@ function updateHeaderCount(){
 
 function renderList(){
   updateHeaderCount();
-  updateSyncStatus();
   const list = $('itemList');
   const filtered = currentFilter === 'all' ? items : items.filter(i => i.flag === currentFilter);
   if(filtered.length === 0){
@@ -506,23 +531,15 @@ function renderList(){
         <div class="top">
           <span class="num">#${i.sticker}</span>
           <span class="dot" style="background:${i.flag==='green' ? 'var(--green)' : 'var(--red)'}"></span>
-          ${syncUrl ? `<span style="font-size:11px;color:${i.synced ? 'var(--green)' : '#c98a1c'};">${i.synced ? '✓ sent' : '⏳ pending'}</span>` : ''}
         </div>
         <div class="name">${i.name}</div>
-        <div class="meta">${i.type} · qty ${i.qty} · ${i.location} → ${i.destination}${i.owner ? ' · ' + i.owner : ''}${i.sublocation ? ' · ' + i.sublocation : ''}</div>
+        <div class="meta">${i.type}${i.packing ? ' · ' + i.packing : ''} · qty ${i.qty} · ${i.location}${i.locationDetail ? ' (' + i.locationDetail + ')' : ''} → ${i.destination}${i.destinationDetail ? ' (' + i.destinationDetail + ')' : ''}${i.owner ? ' · ' + i.owner : ''}</div>
       </div>
-      <button class="del" data-id="${i.id}">×</button>
+      <button class="edit-btn" data-id="${i.id}">&#9998;</button>
     </div>
   `).join('');
-  list.querySelectorAll('.del').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const id = parseInt(btn.dataset.id);
-      if(confirm('Delete this item?')){
-        items = items.filter(i => i.id !== id);
-        await saveItems();
-        renderList();
-      }
-    });
+  list.querySelectorAll('.edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => startEdit(parseInt(btn.dataset.id)));
   });
 }
 
@@ -549,18 +566,19 @@ document.querySelectorAll('.tab').forEach(tab => {
       renderList();
     } else {
       $('checkinView').style.display = 'block';
-      renderMasterStatus();
-      if(syncUrl) fetchMasterFromCloud(true);
+      renderCheckinStatus();
     }
   });
 });
 
 $('exportBtn').addEventListener('click', () => {
-  const header = 'Sticker,Name,Type,Qty,Location,Destination,Owner,Flag,Timestamp,Rack/Cabin,Arrived\n';
+  const header = 'Sticker,Name,Type,Packing,Qty,Location,LocationDetail,Destination,DestinationDetail,Owner,Flag,Timestamp,Arrived\n';
   const rows = items.map(i => [
-    i.sticker, `"${i.name.replace(/"/g,'""')}"`, i.type, i.qty, i.location, i.destination || '',
+    i.sticker, `"${i.name.replace(/"/g,'""')}"`, i.type, i.packing || '', i.qty, i.location,
+    `"${(i.locationDetail||'').replace(/"/g,'""')}"`,
+    i.destination || '',
+    `"${(i.destinationDetail||'').replace(/"/g,'""')}"`,
     `"${(i.owner||'').replace(/"/g,'""')}"`, i.flag, i.ts,
-    `"${(i.sublocation||'').replace(/"/g,'""')}"`,
     i.arrived ? 'Yes' : 'No'
   ].join(','));
   const csv = header + rows.join('\n');
@@ -572,173 +590,25 @@ $('exportBtn').addEventListener('click', () => {
   a.click();
 });
 
-function parseCsv(text){
-  const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
-  if(lines.length < 2) return [];
-  function splitLine(line){
-    const cells = []; let cur = ''; let inQuotes = false;
-    for(let i = 0; i < line.length; i++){
-      const c = line[i];
-      if(c === '"'){
-        if(inQuotes && line[i+1] === '"'){ cur += '"'; i++; }
-        else inQuotes = !inQuotes;
-      } else if(c === ',' && !inQuotes){
-        cells.push(cur); cur = '';
-      } else {
-        cur += c;
-      }
-    }
-    cells.push(cur);
-    return cells;
+function renderCheckinStatus(){
+  const el = $('checkinStatus');
+  if(items.length === 0){
+    el.textContent = 'No items logged yet.';
+    return;
   }
-  const headerCells = splitLine(lines[0]).map(h => h.trim().toLowerCase());
-  const idx = {
-    sticker: headerCells.indexOf('sticker'),
-    name: headerCells.indexOf('name'),
-    type: headerCells.indexOf('type'),
-    qty: headerCells.indexOf('qty'),
-    location: headerCells.indexOf('location'),
-    destination: headerCells.indexOf('destination'),
-    owner: headerCells.indexOf('owner'),
-    flag: headerCells.indexOf('flag'),
-    ts: headerCells.indexOf('timestamp'),
-    sublocation: headerCells.indexOf('rack/cabin'),
-    arrived: headerCells.indexOf('arrived'),
-    photo: headerCells.indexOf('photo link'),
-    receivedQty: headerCells.indexOf('received qty'),
-    condition: headerCells.indexOf('condition'),
-    checkedAt: headerCells.indexOf('checked at')
-  };
-  const out = [];
-  for(let i = 1; i < lines.length; i++){
-    const cells = splitLine(lines[i]);
-    const checkedAtVal = idx.checkedAt >= 0 ? cells[idx.checkedAt] : '';
-    const oldArrivedVal = idx.arrived >= 0 ? cells[idx.arrived] : '';
-    out.push({
-      sticker: idx.sticker >= 0 ? cells[idx.sticker] : '',
-      name: idx.name >= 0 ? cells[idx.name] : '',
-      type: idx.type >= 0 ? cells[idx.type] : '',
-      qty: idx.qty >= 0 ? cells[idx.qty] : '',
-      location: idx.location >= 0 ? cells[idx.location] : '',
-      destination: idx.destination >= 0 ? cells[idx.destination] : '',
-      owner: idx.owner >= 0 ? cells[idx.owner] : '',
-      flag: idx.flag >= 0 ? cells[idx.flag] : '',
-      ts: idx.ts >= 0 ? cells[idx.ts] : '',
-      sublocation: idx.sublocation >= 0 ? cells[idx.sublocation] : '',
-      arrived: (checkedAtVal && checkedAtVal.trim() !== '') || oldArrivedVal.trim().toLowerCase() === 'yes',
-      photo: idx.photo >= 0 ? cells[idx.photo] : '',
-      receivedQty: idx.receivedQty >= 0 ? cells[idx.receivedQty] : '',
-      condition: idx.condition >= 0 ? cells[idx.condition] : '',
-      checkedAt: checkedAtVal,
-      checkinSynced: true
-    });
-  }
-  return out;
-}
-
-function saveMasterList(){
-  localStorage.setItem('tagger-masterlist', JSON.stringify(masterList));
-}
-
-function sortByStickerNum(list){
-  return list.slice().sort((a, b) => {
-    const na = parseInt(a.sticker, 10), nb = parseInt(b.sticker, 10);
-    if(isNaN(na) && isNaN(nb)) return 0;
-    if(isNaN(na)) return 1;
-    if(isNaN(nb)) return -1;
-    return na - nb;
-  });
-}
-
-function mergeMasterList(freshList){
-  const pending = {};
-  masterList.forEach(i => {
-    if(i.checkinSynced === false) pending[i.sticker] = {
-      arrived: true, receivedQty: i.receivedQty, condition: i.condition,
-      checkedAt: i.checkedAt, checkinSynced: false
-    };
-  });
-  freshList.forEach(i => {
-    if(pending[i.sticker]) Object.assign(i, pending[i.sticker]);
-  });
-  masterList = sortByStickerNum(freshList);
-  saveMasterList();
-}
-
-function mapDbRow(row){
-  return {
-    sticker: row.sticker || '',
-    name: row.name || '',
-    type: row.type || '',
-    qty: row.qty,
-    location: row.location || '',
-    destination: row.destination || '',
-    sublocation: row.sublocation || '',
-    owner: row.owner || '',
-    flag: row.flag || '',
-    ts: row.ts || '',
-    photo: row.photo || '',
-    receivedQty: row.received_qty,
-    condition: row.condition || '',
-    checkedAt: row.checked_at || '',
-    arrived: !!(row.checked_at && String(row.checked_at).trim() !== ''),
-    checkinSynced: true
-  };
-}
-
-async function fetchMasterFromCloud(silent){
-  if(!syncUrl) return;
-  try{
-    const res = await fetch(itemsEndpoint(), {method: 'GET', mode: 'cors', cache: 'no-store'});
-    if(!res.ok) throw new Error('bad response');
-    const rows = await res.json();
-    if(!Array.isArray(rows)) throw new Error('bad shape');
-    const fresh = rows.map(mapDbRow);
-    mergeMasterList(fresh);
-    renderMasterStatus();
-    if(!silent) showToast(`Loaded ${masterList.length} items from cloud`);
-  }catch(e){
-    if(!silent) alert('Could not reach the Cloud API. Check the URL is saved on the Log tab, or import a CSV file manually below.');
-  }
-}
-
-$('refreshMasterBtn').addEventListener('click', () => {
-  if(!syncUrl){ alert('Save the Cloud API URL on the Log tab first.'); return; }
-  fetchMasterFromCloud(false);
-});
-
-$('masterCsvInput').addEventListener('change', e => {
-  const file = e.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    mergeMasterList(parseCsv(ev.target.result));
-    renderMasterStatus();
-    showToast(`Loaded ${masterList.length} items`);
-  };
-  reader.readAsText(file);
-});
-
-function renderMasterStatus(){
-  const el = $('masterListStatus');
-  if(masterList.length === 0){
-    el.textContent = 'No master list loaded — searching your own log only.';
-  } else {
-    const arrivedCount = masterList.filter(i => i.arrived).length;
-    const damagedCount = masterList.filter(i => i.arrived && i.condition === 'damaged').length;
-    const mismatchCount = masterList.filter(i => i.arrived && i.receivedQty !== undefined && String(i.receivedQty) !== String(i.qty)).length;
-    let txt = `${masterList.length} items loaded, sorted by number · ${arrivedCount} received`;
-    if(damagedCount) txt += ` · ${damagedCount} damaged`;
-    if(mismatchCount) txt += ` · ${mismatchCount} qty mismatch`;
-    el.textContent = txt + '.';
-  }
+  const arrivedCount = items.filter(i => i.arrived).length;
+  const damagedCount = items.filter(i => i.arrived && i.condition === 'damaged').length;
+  const mismatchCount = items.filter(i => i.arrived && i.receivedQty !== undefined && String(i.receivedQty) !== String(i.qty)).length;
+  let txt = `${items.length} items logged · ${arrivedCount} received`;
+  if(damagedCount) txt += ` · ${damagedCount} damaged`;
+  if(mismatchCount) txt += ` · ${mismatchCount} qty mismatch`;
+  el.textContent = txt + '.';
 }
 
 function renderCheckinResult(sticker){
   const box = $('checkinResult');
   if(!sticker){ box.innerHTML = ''; return; }
-  let source = 'own', match = items.find(i => i.sticker === sticker);
-  if(!match){ match = masterList.find(i => i.sticker === sticker); source = 'master'; }
+  const match = items.find(i => i.sticker === sticker);
   if(!match){
     box.innerHTML = `<div class="empty-state">No item found with #${sticker}.</div>`;
     return;
@@ -757,7 +627,7 @@ function renderCheckinResult(sticker){
           <span class="dot" style="background:${match.flag==='green' ? 'var(--green)' : 'var(--red)'}"></span>
         </div>
         <div class="name">${match.name}</div>
-        <div class="meta">${match.type} · expected qty ${expectedQty} · from ${match.location} → ${match.destination}${match.sublocation ? ' · ' + match.sublocation : ''}</div>
+        <div class="meta">${match.type} · expected qty ${expectedQty} · from ${match.location}${match.locationDetail ? ' (' + match.locationDetail + ')' : ''} → ${match.destination}${match.destinationDetail ? ' (' + match.destinationDetail + ')' : ''}</div>
       </div>
     </div>
 
@@ -796,9 +666,9 @@ function renderCheckinResult(sticker){
     match.receivedQty = parseInt($('recvQty').value || 0);
     match.condition = condition;
     match.checkedAt = new Date().toISOString();
-    if(source === 'own'){ await saveItems(); } else { saveMasterList(); }
+    await saveItems();
     renderCheckinResult(sticker);
-    renderMasterStatus();
+    renderCheckinStatus();
     showToast(`#${sticker} receipt saved`);
   });
 }
