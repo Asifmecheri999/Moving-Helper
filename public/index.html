@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Moving Helper</title>
+<title>Moving Helper for A9</title>
 <style>
   :root{
     --ink:#0d1117;
@@ -70,8 +70,12 @@
   .qty-row{display:flex; align-items:center; gap:8px;}
   .qty-row input{text-align:center;}
   .stepper{
-    width:42px; height:42px; border-radius:8px; border:1px solid var(--line);
+    width:44px; height:44px; border-radius:8px; border:1px solid var(--line);
     background:var(--panel); font-size:19px; color:var(--ink); flex-shrink:0;
+  }
+  .chip:active, .filter-chip:active, .flag-btn:active, .stepper:active,
+  .save-btn:active, .export-btn:active, .delete-btn:active, .edit-btn:active{
+    opacity:0.72;
   }
   .photo-box{
     border:1.5px dashed var(--line); border-radius:10px; height:150px;
@@ -90,9 +94,9 @@
   .flag-btn.green.on{background:var(--green-bg); border-color:var(--green); color:var(--green);}
   .flag-btn.green.on .dot{background:var(--green);}
   .flag-btn.red.on{background:var(--red-bg); border-color:var(--red); color:var(--red);}
-  .chip-group{display:flex; gap:6px;}
+  .chip-group{display:flex; gap:7px;}
   .chip{
-    flex:1; padding:9px 3px; border-radius:20px; border:1.5px solid var(--line);
+    flex:1; min-height:40px; padding:10px 4px; border-radius:20px; border:1.5px solid var(--line);
     background:var(--panel); font-size:clamp(9.5px, 3vw, 13.5px); color:#6b6a62; font-weight:500;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:center;
   }
@@ -111,11 +115,11 @@
   }
   .save-btn:disabled{opacity:0.4;}
   .item{
-    display:flex; gap:11px; background:var(--panel); border:1px solid var(--line);
-    border-radius:10px; padding:10px; margin-bottom:9px; align-items:center;
+    display:flex; gap:12px; background:var(--panel); border:1px solid var(--line);
+    border-radius:10px; padding:12px; margin-bottom:10px; align-items:center;
   }
   .item .thumb{
-    width:54px; height:54px; border-radius:7px; object-fit:cover; background:var(--paper);
+    width:56px; height:56px; border-radius:8px; object-fit:cover; background:var(--paper);
     flex-shrink:0; border:1px solid var(--line);
   }
   .item .thumb.empty{display:flex; align-items:center; justify-content:center; color:#c3c1b6; font-size:10px;}
@@ -130,9 +134,13 @@
   .item .top{display:flex; align-items:center; gap:7px; flex-wrap:wrap; row-gap:4px;}
   .item .num{font-family:var(--mono); font-weight:700; font-size:13.5px;}
   .item .dot{width:9px; height:9px; border-radius:50%; flex-shrink:0;}
-  .item .name{font-size:14.5px; font-weight:600; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  .item .meta{font-size:12px; color:#8a8a80; margin-top:2px;}
-  .item .edit-btn{background:none; border:none; color:#8a8a80; font-size:17px; padding:4px 8px;}
+  .item .name{font-size:15px; font-weight:600; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .item .meta{font-size:12px; color:#8a8a80; margin-top:3px; line-height:1.4;}
+  .item .edit-btn{
+    background:none; border:none; color:#8a8a80; font-size:18px;
+    width:40px; height:40px; flex-shrink:0; border-radius:8px;
+  }
+  .item .edit-btn:active{background:var(--paper);}
   .edit-banner{
     display:flex; align-items:center; justify-content:space-between; gap:10px;
     background:var(--blue-bg); color:var(--blue-dark); border:1px solid var(--blue);
@@ -145,6 +153,7 @@
   }
   .default-tick{
     font-size:11.5px; font-weight:600; color:#8a94a6; cursor:pointer; user-select:none;
+    padding:6px 2px; margin:-6px -2px;
   }
   .default-tick .box{
     display:inline-block; width:13px; height:13px; border-radius:3px; border:1.5px solid var(--line);
@@ -154,10 +163,15 @@
   .default-tick.on{color:var(--blue-dark);}
   .default-tick.on .box{background:var(--blue); border-color:var(--blue);}
   .empty-state{text-align:center; color:#8a8a80; font-size:13.5px; padding:40px 20px;}
-  .filters{display:flex; gap:7px; margin-bottom:12px; overflow-x:auto; padding-bottom:2px;}
+  .filter-label{
+    font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;
+    color:#9aa3b2; margin:0 0 7px;
+  }
+  .filter-group{margin-bottom:16px;}
+  .filters{display:flex; gap:8px; margin-bottom:0; overflow-x:auto; padding-bottom:3px;}
   .filter-chip{
-    flex-shrink:0; padding:7px 13px; border-radius:20px; border:1px solid var(--line);
-    background:var(--panel); font-size:12.5px; color:#6b6a62;
+    flex-shrink:0; padding:9px 15px; border-radius:20px; border:1px solid var(--line);
+    background:var(--panel); font-size:13px; color:#6b6a62; font-weight:500;
   }
   .filter-chip.active{background:var(--blue); color:#fff; border-color:var(--blue);}
   .export-btn{
@@ -182,6 +196,10 @@
     font-size:19px; margin:0 0 18px; text-align:center; color:var(--blue-dark);
   }
   .form-error{color:var(--red); font-size:13px; margin-top:10px;}
+  #loginCode{
+    text-align:center; font-size:24px; letter-spacing:14px; font-family:var(--mono);
+    padding-left:16px;
+  }
   .session-bar{
     display:flex; justify-content:space-between; align-items:center; padding:8px 14px;
     font-size:12px; color:#6b6a62; background:var(--panel); border-bottom:1px solid var(--line);
@@ -193,12 +211,13 @@
 
 <div id="loginScreen" class="login-screen">
   <div class="login-card">
-    <h1>Moving Helper</h1>
-    <label>Username</label>
+    <h1>Moving Helper for A9</h1>
+    <label>Your name</label>
     <input type="text" id="loginUsername" autocomplete="username">
     <label>4-digit code</label>
     <input type="password" id="loginCode" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="&bull;&bull;&bull;&bull;">
     <button class="save-btn" id="loginBtn">Log in</button>
+    <button class="export-btn" id="signupBtn" style="margin-top:10px; margin-bottom:0;">New here? Create account</button>
     <div id="loginError" class="form-error" style="display:none;"></div>
   </div>
 </div>
@@ -206,7 +225,7 @@
 <div id="appRoot" style="display:none;">
 
 <header>
-  <h1>Moving Helper</h1>
+  <h1>Moving Helper for A9</h1>
   <span class="count" id="headerCount">0 logged</span>
 </header>
 
@@ -308,14 +327,23 @@
   </div>
 
   <div id="listView" style="display:none;">
-    <input type="text" id="logSearch" placeholder="Search by sticker number or name" style="margin-bottom:12px;">
-    <div class="filters" id="filters">
-      <div class="filter-chip active" data-filter="all">All</div>
-      <div class="filter-chip" data-filter="green">Required</div>
-      <div class="filter-chip" data-filter="red">Not required</div>
+    <input type="text" id="logSearch" placeholder="Search by sticker number or name" style="margin-bottom:16px;">
+    <div class="filter-group">
+      <div class="filter-label">Status</div>
+      <div class="filters" id="filters">
+        <div class="filter-chip active" data-filter="all">All</div>
+        <div class="filter-chip" data-filter="green">Required</div>
+        <div class="filter-chip" data-filter="red">Not required</div>
+      </div>
     </div>
-    <div class="filters" id="logLocFilters"></div>
-    <div class="filters" id="logUserFilters"></div>
+    <div class="filter-group">
+      <div class="filter-label">Location</div>
+      <div class="filters" id="logLocFilters"></div>
+    </div>
+    <div class="filter-group">
+      <div class="filter-label">Team</div>
+      <div class="filters" id="logUserFilters"></div>
+    </div>
     <button class="export-btn" id="exportBtn">Export Excel</button>
     <div id="itemList"></div>
   </div>
@@ -334,24 +362,25 @@
       <div id="checkinResult" style="margin-top:14px;"></div>
     </div>
 
-    <div class="filters" id="checkinFilters">
-      <div class="filter-chip active" data-cfilter="all">All</div>
-      <div class="filter-chip" data-cfilter="pending">Pending</div>
-      <div class="filter-chip" data-cfilter="received">Received</div>
-      <div class="filter-chip" data-cfilter="mismatch">Mismatch</div>
+    <div class="filter-group">
+      <div class="filter-label">Status</div>
+      <div class="filters" id="checkinFilters">
+        <div class="filter-chip active" data-cfilter="all">All</div>
+        <div class="filter-chip" data-cfilter="pending">Pending</div>
+        <div class="filter-chip" data-cfilter="received">Received</div>
+        <div class="filter-chip" data-cfilter="mismatch">Mismatch</div>
+      </div>
     </div>
-    <div class="filters" id="checkinUserFilters"></div>
+    <div class="filter-group">
+      <div class="filter-label">Team</div>
+      <div class="filters" id="checkinUserFilters"></div>
+    </div>
     <div id="checkinList"></div>
   </div>
 
   <div id="adminView" style="display:none;">
-    <div class="card">
-      <label>New user's name</label>
-      <input type="text" id="newUserName" placeholder="e.g. John">
-      <label>4-digit code</label>
-      <input type="password" id="newUserCode" inputmode="numeric" maxlength="4" placeholder="&bull;&bull;&bull;&bull;">
-      <button class="save-btn" id="createUserBtn">Create user</button>
-      <div id="adminError" class="form-error" style="display:none;"></div>
+    <div class="card" style="font-size:12.5px; color:#6b6a62;">
+      Anyone can create their own account from the login screen. Remove a user below if needed.
     </div>
     <div id="userList"></div>
   </div>
@@ -425,19 +454,19 @@ function showApp(){
   $('adminTab').style.display = session.role === 'admin' ? '' : 'none';
 }
 
-$('loginBtn').addEventListener('click', async () => {
+async function submitAuth(path, defaultErrorMsg){
   const username = $('loginUsername').value.trim();
   const code = $('loginCode').value.trim();
   $('loginError').style.display = 'none';
   if(!username || !code) return;
   try{
-    const res = await fetch('/api/login', {
+    const res = await fetch(path, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ username, code })
     });
     const data = await res.json();
-    if(!res.ok) throw new Error(data.error || 'Login failed');
+    if(!res.ok) throw new Error(data.error || defaultErrorMsg);
     session = { token: data.token, username: data.username, role: data.role };
     localStorage.setItem('tagger-session', JSON.stringify(session));
     $('loginUsername').value = '';
@@ -445,10 +474,13 @@ $('loginBtn').addEventListener('click', async () => {
     showApp();
     loadData();
   }catch(e){
-    $('loginError').textContent = e.message || 'Login failed';
+    $('loginError').textContent = e.message || defaultErrorMsg;
     $('loginError').style.display = 'block';
   }
-});
+}
+
+$('loginBtn').addEventListener('click', () => submitAuth('/api/login', 'Login failed'));
+$('signupBtn').addEventListener('click', () => submitAuth('/api/signup', 'Could not create account'));
 
 $('logoutLink').addEventListener('click', async e => {
   e.preventDefault();
@@ -1318,33 +1350,6 @@ async function renderUserList(){
     el.innerHTML = `<div class="empty-state">Could not load users.</div>`;
   }
 }
-
-$('createUserBtn').addEventListener('click', async () => {
-  const username = $('newUserName').value.trim();
-  const code = $('newUserCode').value.trim();
-  $('adminError').style.display = 'none';
-  if(!username || !/^\d{4}$/.test(code)){
-    $('adminError').textContent = 'Enter a name and a 4-digit code.';
-    $('adminError').style.display = 'block';
-    return;
-  }
-  try{
-    const res = await apiFetch('/api/users', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ username, code })
-    });
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.error || 'Could not create user');
-    $('newUserName').value = '';
-    $('newUserCode').value = '';
-    showToast(`User "${username}" created`);
-    renderUserList();
-  }catch(e){
-    $('adminError').textContent = e.message;
-    $('adminError').style.display = 'block';
-  }
-});
 
 if(session && session.token){
   showApp();
