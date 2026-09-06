@@ -159,6 +159,18 @@ async function updateItem(sticker, request, env, session) {
   }
   let body;
   try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
+
+  let newSticker = null;
+  if (Object.prototype.hasOwnProperty.call(body, 'sticker')) {
+    const trimmed = String(body.sticker || '').trim();
+    if (!trimmed) return jsonResponse({ error: 'sticker cannot be empty' }, 400);
+    if (trimmed !== sticker) {
+      const clash = await env.DB.prepare('SELECT 1 FROM items WHERE sticker = ?').bind(trimmed).first();
+      if (clash) return jsonResponse({ error: 'sticker already used' }, 409);
+      newSticker = trimmed;
+    }
+  }
+
   const sets = [];
   const values = [];
   for (const [key, col] of Object.entries(UPDATABLE_FIELDS)) {
@@ -171,10 +183,18 @@ async function updateItem(sticker, request, env, session) {
     sets.push('created_by = ?');
     values.push(session.username);
   }
+  if (newSticker) {
+    sets.push('sticker = ?');
+    values.push(newSticker);
+  }
   if (sets.length === 0) return jsonResponse({ error: 'nothing to update' }, 400);
   values.push(sticker);
   await env.DB.prepare(`UPDATE items SET ${sets.join(', ')} WHERE sticker = ?`).bind(...values).run();
-  return jsonResponse({ ok: true, claimed: isUnclaimed && session.role !== 'admin' ? session.username : undefined });
+  return jsonResponse({
+    ok: true,
+    claimed: isUnclaimed && session.role !== 'admin' ? session.username : undefined,
+    newSticker: newSticker || undefined
+  });
 }
 
 async function deleteItem(sticker, env, session) {

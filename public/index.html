@@ -841,12 +841,17 @@ function showToast(msg){
 
 $('saveBtn').addEventListener('click', async () => {
   const stickerVal = $('stickerNum').value.trim();
-  if(!editingSticker && items.some(i => i.sticker === stickerVal)){
+  if(!stickerVal){
+    alert('Sticker number is required.');
+    return;
+  }
+  if(items.some(i => i.sticker === stickerVal && i.sticker !== editingSticker)){
     alert(`Sticker #${stickerVal} is already used. Pick a different number.`);
     return;
   }
   $('saveBtn').disabled = true;
   const fields = {
+    sticker: stickerVal,
     name: $('itemName').value.trim(),
     type: typeChip.get(),
     packing: packingChip.get(),
@@ -864,6 +869,7 @@ $('saveBtn').addEventListener('click', async () => {
 
   if(editingSticker){
     const item = items.find(i => i.sticker === editingSticker);
+    const prevSticker = item ? item.sticker : editingSticker;
     if(item) Object.assign(item, fields, { photo: photoKey });
     try{
       const res = await apiFetch(`/api/items/${encodeURIComponent(editingSticker)}`, {
@@ -871,13 +877,19 @@ $('saveBtn').addEventListener('click', async () => {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ ...fields, photo: photoKey })
       });
+      if(res.status === 409){
+        if(item) item.sticker = prevSticker;
+        alert(`Sticker #${stickerVal} was just taken by someone else. Pick a different number.`);
+        $('saveBtn').disabled = false;
+        return;
+      }
       if(!res.ok) throw new Error('update failed');
       const data = await res.json();
       if(item){
         delete item._dirty;
         if(data.claimed) item.createdBy = data.claimed;
       }
-      showToast(`Updated #${stickerVal}`);
+      showToast(stickerVal !== editingSticker ? `Renumbered #${editingSticker} to #${stickerVal}` : `Updated #${stickerVal}`);
     }catch(e){
       if(item) item._dirty = true;
       showToast(`Updated #${stickerVal} locally — will sync when online`);
@@ -937,7 +949,6 @@ function startEdit(sticker){
   if(!item) return;
   editingSticker = sticker;
   $('stickerNum').value = item.sticker;
-  $('stickerNum').readOnly = true;
   $('itemName').value = item.name;
   typeChip.set(item.type || 'Equipment');
   packingChip.set(item.packing || 'In box');
@@ -973,7 +984,6 @@ function resetForm(){
   $('flagGreen').classList.remove('on');
   $('flagRed').classList.remove('on');
   setNextStickerNum();
-  $('stickerNum').readOnly = false;
   $('editBanner').style.display = 'none';
   $('saveBtn').textContent = 'Save item';
   $('deleteItemBtn').style.display = 'none';
@@ -1085,7 +1095,7 @@ document.querySelectorAll('#checkinFilters .filter-chip').forEach(chip => {
   });
 });
 
-async function downloadStyledExcel(filename, headers, rows, textCols = [], photoCol = -1){
+async function downloadStyledExcel(filename, headers, rows, textCols = [], photoCol = -1, columnOptions = {}){
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Sheet1');
   const headerRow = ws.addRow(headers);
@@ -1114,6 +1124,14 @@ async function downloadStyledExcel(filename, headers, rows, textCols = [], photo
           ws.addImage(imgId, { tl: { col: photoCol, row: ri + 1 }, ext: { width: 55, height: 55 } });
         }catch(e){}
       }
+    }
+  });
+  const dropdownRows = Math.max(rows.length + 1, 500);
+  Object.entries(columnOptions).forEach(([ci, options]) => {
+    const col = Number(ci) + 1;
+    const formula = `"${options.join(',')}"`;
+    for(let r = 2; r <= dropdownRows; r++){
+      ws.getCell(r, col).dataValidation = { type: 'list', allowBlank: true, formulae: [formula] };
     }
   });
   ws.columns.forEach((col, ci) => { col.width = ci === photoCol ? 10 : 18; });
@@ -1430,13 +1448,21 @@ function parseCatalogCsv(text){
   return out;
 }
 
+const A9_ROOM_OPTIONS = ['Carbon Fiber CNC','Dirty Work Room','3D Printer Room','Store 01','Store 02','Storage S1','Storage S3','Storage S4','Storage S5','Storage S6','Storage S7','Tools Room','Storage/Drone Repairs'];
+
 $('downloadTemplateBtn').addEventListener('click', () => {
   const headers = ['Name','Qty','Type','Packing','Location','Exact Location','Location at A9','End User','Requirement'];
   const rows = [
     ['Bench drill', 1, 'Equipment', 'In box', 'Masdar', 'Rack 3', 'Storage S1', 'John', 'Required'],
     ['M4 bolts box', 5, 'Consumables', 'Bag', 'Kizad', '', '', 'Sara', 'Not required']
   ];
-  downloadStyledExcel('item-list-template.xlsx', headers, rows);
+  downloadStyledExcel('item-list-template.xlsx', headers, rows, [], -1, {
+    2: ['Equipment', 'Tool', 'Consumables', 'Accessory'],
+    3: ['In box', 'Bag', 'Unpacked'],
+    4: locations,
+    6: A9_ROOM_OPTIONS,
+    8: ['Required', 'Not required']
+  });
 });
 
 async function parseCatalogXlsx(buffer){
