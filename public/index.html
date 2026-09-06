@@ -407,9 +407,9 @@
       <div style="font-size:12.5px; color:#6b6a62; margin-bottom:6px;">
         One file, two ways to use it: turn each row into a real logged item (auto-numbered — anyone can open it later to add a photo), or just save the names for the suggestion dropdown on Item Name.
       </div>
-      <button class="export-btn" id="downloadTemplateBtn" style="margin-top:14px;">Download template CSV</button>
-      <label>Upload your filled-in CSV</label>
-      <input type="file" accept=".csv,text/csv,text/comma-separated-values,application/csv,application/vnd.ms-excel,text/plain" id="catalogFile">
+      <button class="export-btn" id="downloadTemplateBtn" style="margin-top:14px;">Download template</button>
+      <label>Upload your filled-in file</label>
+      <input type="file" accept=".csv,.xlsx,text/csv,text/comma-separated-values,application/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain" id="catalogFile">
       <div id="catalogChoice" style="display:none; margin-top:14px;">
         <div id="catalogPreviewText" style="font-size:12.5px; color:#6b6a62; margin-bottom:10px;"></div>
         <button class="save-btn" id="catalogAddLogBtn" style="margin-top:0;">Add to Log</button>
@@ -1431,17 +1431,39 @@ function parseCatalogCsv(text){
 }
 
 $('downloadTemplateBtn').addEventListener('click', () => {
-  const csv = 'Name,Qty,Type,Packing,Location,Exact Location,Location at A9,End User,Requirement\n'
-    + 'Bench drill,1,Equipment,In box,Masdar,Rack 3,Storage S1,John,Required\n'
-    + 'M4 bolts box,5,Consumables,Bag,Kizad,,,Sara,Not required\n';
-  const blob = new Blob([csv], {type:'text/csv'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'item-list-template.csv';
-  a.click();
-  URL.revokeObjectURL(url);
+  const headers = ['Name','Qty','Type','Packing','Location','Exact Location','Location at A9','End User','Requirement'];
+  const rows = [
+    ['Bench drill', 1, 'Equipment', 'In box', 'Masdar', 'Rack 3', 'Storage S1', 'John', 'Required'],
+    ['M4 bolts box', 5, 'Consumables', 'Bag', 'Kizad', '', '', 'Sara', 'Not required']
+  ];
+  downloadStyledExcel('item-list-template.xlsx', headers, rows);
 });
+
+async function parseCatalogXlsx(buffer){
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer);
+  const ws = wb.worksheets[0];
+  const out = [];
+  ws.eachRow((row, rowNumber) => {
+    const vals = row.values;
+    const name = String(vals[1] || '').trim();
+    if(!name) return;
+    if(rowNumber === 1 && /^name$/i.test(name)) return;
+    const reqRaw = String(vals[9] || '').trim().toLowerCase();
+    out.push({
+      name,
+      qty: parseInt(vals[2], 10) || 0,
+      type: String(vals[3] || '').trim(),
+      packing: String(vals[4] || '').trim(),
+      location: String(vals[5] || '').trim(),
+      locationDetail: String(vals[6] || '').trim(),
+      destinationDetail: String(vals[7] || '').trim(),
+      owner: String(vals[8] || '').trim(),
+      flag: reqRaw === 'required' ? 'green' : (reqRaw === 'not required' ? 'red' : '')
+    });
+  });
+  return out;
+}
 
 let pendingCatalogRows = [];
 
@@ -1454,9 +1476,10 @@ function resetCatalogUpload(){
 $('catalogFile').addEventListener('change', e => {
   const file = e.target.files[0];
   if(!file) return;
+  const isXlsx = /\.xlsx$/i.test(file.name);
   const reader = new FileReader();
-  reader.onload = ev => {
-    pendingCatalogRows = parseCatalogCsv(ev.target.result);
+  reader.onload = async ev => {
+    pendingCatalogRows = isXlsx ? await parseCatalogXlsx(ev.target.result) : parseCatalogCsv(ev.target.result);
     $('catalogStatus').textContent = '';
     if(!pendingCatalogRows.length){
       $('catalogStatus').textContent = 'No items found in that file.';
@@ -1466,7 +1489,8 @@ $('catalogFile').addEventListener('change', e => {
     $('catalogPreviewText').textContent = `Found ${pendingCatalogRows.length} items. What should we do with them?`;
     $('catalogChoice').style.display = 'block';
   };
-  reader.readAsText(file);
+  if(isXlsx) reader.readAsArrayBuffer(file);
+  else reader.readAsText(file);
 });
 
 $('catalogSuggestBtn').addEventListener('click', async () => {
