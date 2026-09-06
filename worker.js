@@ -107,35 +107,6 @@ async function createItem(request, env, session) {
   return jsonResponse({ ok: true }, 201);
 }
 
-async function bulkCreateItems(request, env) {
-  let body;
-  try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
-  if (!Array.isArray(body)) return jsonResponse({ error: 'expected an array of {name, qty, location}' }, 400);
-  const rows = body
-    .map(r => ({
-      name: String(r?.name || '').trim(),
-      qty: Number(r?.qty) || 0,
-      location: String(r?.location || '').trim()
-    }))
-    .filter(r => r.name)
-    .slice(0, 2000);
-  if (!rows.length) return jsonResponse({ error: 'no valid rows' }, 400);
-
-  const maxRow = await env.DB.prepare('SELECT MAX(CAST(sticker AS INTEGER)) as m FROM items').first();
-  let next = (maxRow && maxRow.m ? maxRow.m : 0) + 1;
-  const now = new Date().toISOString();
-
-  const stmts = rows.map(r => {
-    const sticker = String(next++).padStart(5, '0');
-    return env.DB.prepare(
-      `INSERT INTO items (sticker, name, qty, location, destination, ts, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, NULL)`
-    ).bind(sticker, r.name, r.qty, r.location, 'A9 Warehouse', now);
-  });
-  await env.DB.batch(stmts);
-  return jsonResponse({ ok: true, count: rows.length });
-}
-
 const UPDATABLE_FIELDS = {
   name: 'name', type: 'type', packing: 'packing', qty: 'qty',
   location: 'location', locationDetail: 'location_detail',
@@ -147,8 +118,7 @@ const UPDATABLE_FIELDS = {
 async function updateItem(sticker, request, env, session) {
   const existing = await env.DB.prepare('SELECT created_by FROM items WHERE sticker = ?').bind(sticker).first();
   if (!existing) return jsonResponse({ error: 'not found' }, 404);
-  const isUnclaimed = !existing.created_by;
-  if (session.role !== 'admin' && !isUnclaimed && existing.created_by !== session.username) {
+  if (session.role !== 'admin' && existing.created_by !== session.username) {
     return jsonResponse({ error: 'forbidden' }, 403);
   }
   let body;
@@ -161,14 +131,10 @@ async function updateItem(sticker, request, env, session) {
       values.push(key === 'arrived' ? (body[key] ? 1 : 0) : body[key]);
     }
   }
-  if (isUnclaimed && session.role !== 'admin') {
-    sets.push('created_by = ?');
-    values.push(session.username);
-  }
   if (sets.length === 0) return jsonResponse({ error: 'nothing to update' }, 400);
   values.push(sticker);
   await env.DB.prepare(`UPDATE items SET ${sets.join(', ')} WHERE sticker = ?`).bind(...values).run();
-  return jsonResponse({ ok: true, claimed: isUnclaimed && session.role !== 'admin' ? session.username : undefined });
+  return jsonResponse({ ok: true });
 }
 
 async function deleteItem(sticker, env, session) {
@@ -253,10 +219,6 @@ export default {
       if (path === '/api/logout' && request.method === 'POST') return logout(request, env);
       if (path === '/api/items' && request.method === 'GET') return listItems(env);
       if (path === '/api/items' && request.method === 'POST') return createItem(request, env, session);
-      if (path === '/api/items/bulk' && request.method === 'POST') {
-        if (session.role !== 'admin') return jsonResponse({ error: 'forbidden' }, 403);
-        return bulkCreateItems(request, env);
-      }
 
       let m = path.match(/^\/api\/items\/([^/]+)$/);
       if (m) {
