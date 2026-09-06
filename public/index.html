@@ -245,7 +245,7 @@
       <div class="name" id="homeUserLabel"></div>
     </div>
     <button class="menu-btn" data-view="add">Add item</button>
-    <button class="menu-btn" data-view="csv" id="csvMenuBtn" style="display:none;">Add items using CSV</button>
+    <button class="menu-btn" data-view="csv" id="csvMenuBtn" style="display:none;">Add items from sheet</button>
     <button class="menu-btn" data-view="list">Log</button>
     <button class="menu-btn" data-view="checkin">A9 Check-in</button>
     <button class="menu-btn" data-view="admin" id="adminMenuBtn" style="display:none;">Admin</button>
@@ -738,7 +738,7 @@ async function saveItems(){
   try{
     localStorage.setItem('tagger-items', JSON.stringify(items));
   }catch(e){
-    alert('Could not save — device storage may be full. Export your CSV now to be safe.');
+    alert('Could not save — device storage may be full. Export your Excel file now to be safe.');
   }
 }
 async function saveLocations(){
