@@ -405,11 +405,16 @@
     <div class="card">
       <label style="font-size:17px; font-weight:700; color:var(--ink);">Upload</label>
       <div style="font-size:12.5px; color:#6b6a62; margin-bottom:6px;">
-        This just adds names to the suggestion dropdown on the Item Name field, so they're easy to pick when adding an item — it does not create log entries.
+        One file, two ways to use it: turn each row into a real logged item (auto-numbered — anyone can open it later to add a photo), or just save the names for the suggestion dropdown on Item Name.
       </div>
       <button class="export-btn" id="downloadTemplateBtn" style="margin-top:14px;">Download template CSV</button>
-      <label>Upload your filled-in CSV (Name, Qty)</label>
+      <label>Upload your filled-in CSV</label>
       <input type="file" accept=".csv" id="catalogFile">
+      <div id="catalogChoice" style="display:none; margin-top:14px;">
+        <div id="catalogPreviewText" style="font-size:12.5px; color:#6b6a62; margin-bottom:10px;"></div>
+        <button class="save-btn" id="catalogAddLogBtn" style="margin-top:0;">Add to Log</button>
+        <button class="export-btn" id="catalogSuggestBtn" style="margin-top:10px;">Suggestions only</button>
+      </div>
       <div id="catalogStatus" style="font-size:12px; color:#6b6a62; margin-top:10px;"></div>
     </div>
   </div>
@@ -453,7 +458,7 @@ function escHtml(v){
 }
 
 function canEdit(item){
-  return !!session && (session.role === 'admin' || item.createdBy === session.username);
+  return !!session && (session.role === 'admin' || !item.createdBy || item.createdBy === session.username);
 }
 
 async function apiFetch(path, options = {}){
@@ -867,7 +872,11 @@ $('saveBtn').addEventListener('click', async () => {
         body: JSON.stringify({ ...fields, photo: photoKey })
       });
       if(!res.ok) throw new Error('update failed');
-      if(item) delete item._dirty;
+      const data = await res.json();
+      if(item){
+        delete item._dirty;
+        if(data.claimed) item.createdBy = data.claimed;
+      }
       showToast(`Updated #${stickerVal}`);
     }catch(e){
       if(item) item._dirty = true;
@@ -1344,7 +1353,9 @@ function renderCheckinResult(sticker){
         body: JSON.stringify({ arrived: true, receivedQty, condition, checkedAt })
       });
       if(!res.ok) throw new Error('checkin sync failed');
+      const data = await res.json();
       delete match._dirty;
+      if(data.claimed) match.createdBy = data.claimed;
     }catch(e){
       match._dirty = true;
     }
@@ -1397,18 +1408,32 @@ function parseCatalogCsv(text){
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if(!lines.length) return [];
   const startIdx = /^name\s*,\s*qty/i.test(lines[0]) ? 1 : 0;
+  const clean = s => (s || '').trim().replace(/^"|"$/g, '');
   const out = [];
   for(let i = startIdx; i < lines.length; i++){
     const parts = lines[i].split(',');
-    const name = (parts[0] || '').trim().replace(/^"|"$/g, '');
-    const qty = parseInt((parts[1] || '0').trim(), 10) || 0;
-    if(name) out.push({ name, qty });
+    const name = clean(parts[0]);
+    if(!name) continue;
+    const reqRaw = clean(parts[8]).toLowerCase();
+    out.push({
+      name,
+      qty: parseInt(clean(parts[1]) || '0', 10) || 0,
+      type: clean(parts[2]),
+      packing: clean(parts[3]),
+      location: clean(parts[4]),
+      locationDetail: clean(parts[5]),
+      destinationDetail: clean(parts[6]),
+      owner: clean(parts[7]),
+      flag: reqRaw === 'required' ? 'green' : (reqRaw === 'not required' ? 'red' : '')
+    });
   }
   return out;
 }
 
 $('downloadTemplateBtn').addEventListener('click', () => {
-  const csv = 'Name,Qty\nBench drill,1\nM4 bolts box,5\n';
+  const csv = 'Name,Qty,Type,Packing,Location,Exact Location,Location at A9,End User,Requirement\n'
+    + 'Bench drill,1,Equipment,In box,Masdar,Rack 3,Storage S1,John,Required\n'
+    + 'M4 bolts box,5,Consumables,Bag,Kizad,,,Sara,Not required\n';
   const blob = new Blob([csv], {type:'text/csv'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1418,35 +1443,68 @@ $('downloadTemplateBtn').addEventListener('click', () => {
   URL.revokeObjectURL(url);
 });
 
+let pendingCatalogRows = [];
+
+function resetCatalogUpload(){
+  $('catalogFile').value = '';
+  $('catalogChoice').style.display = 'none';
+  pendingCatalogRows = [];
+}
+
 $('catalogFile').addEventListener('change', e => {
   const file = e.target.files[0];
   if(!file) return;
   const reader = new FileReader();
-  reader.onload = async ev => {
-    const rows = parseCatalogCsv(ev.target.result);
-    if(!rows.length){
+  reader.onload = ev => {
+    pendingCatalogRows = parseCatalogCsv(ev.target.result);
+    $('catalogStatus').textContent = '';
+    if(!pendingCatalogRows.length){
       $('catalogStatus').textContent = 'No items found in that file.';
-      e.target.value = '';
+      $('catalogChoice').style.display = 'none';
       return;
     }
-    try{
-      const res = await apiFetch('/api/catalog', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(rows)
-      });
-      const data = await res.json();
-      if(!res.ok) throw new Error(data.error || 'Upload failed');
-      catalog = rows;
-      updateCatalogOptions();
-      $('catalogStatus').textContent = `Saved ${data.count} name suggestions.`;
-      showToast(`Saved ${data.count} name suggestions`);
-    }catch(err){
-      $('catalogStatus').textContent = 'Could not save suggestions.';
-    }
-    e.target.value = '';
+    $('catalogPreviewText').textContent = `Found ${pendingCatalogRows.length} items. What should we do with them?`;
+    $('catalogChoice').style.display = 'block';
   };
   reader.readAsText(file);
+});
+
+$('catalogSuggestBtn').addEventListener('click', async () => {
+  try{
+    const res = await apiFetch('/api/catalog', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(pendingCatalogRows.map(r => ({ name: r.name, qty: r.qty })))
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Upload failed');
+    catalog = pendingCatalogRows.map(r => ({ name: r.name, qty: r.qty }));
+    updateCatalogOptions();
+    $('catalogStatus').textContent = `Saved ${data.count} name suggestions.`;
+    showToast(`Saved ${data.count} name suggestions`);
+    resetCatalogUpload();
+  }catch(err){
+    $('catalogStatus').textContent = 'Could not save suggestions.';
+  }
+});
+
+$('catalogAddLogBtn').addEventListener('click', async () => {
+  if(!confirm(`Create ${pendingCatalogRows.length} log entries from this file? Each gets its own sticker number automatically.`)) return;
+  try{
+    const res = await apiFetch('/api/items/bulk', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(pendingCatalogRows)
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Import failed');
+    $('catalogStatus').textContent = `Created ${data.count} log entries — anyone can open them from the Log tab to add a photo and finish up.`;
+    showToast(`Created ${data.count} log entries`);
+    resetCatalogUpload();
+    await loadData();
+  }catch(err){
+    $('catalogStatus').textContent = 'Could not create log entries.';
+  }
 });
 
 if(session && session.token){
