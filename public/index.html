@@ -390,8 +390,19 @@
       </div>
     </div>
     <div class="filter-group">
+      <div class="filter-label">Location</div>
+      <div class="filters" id="checkinLocFilters"></div>
+    </div>
+    <div class="filter-group">
       <div class="filter-label">Team</div>
       <div class="filters" id="checkinUserFilters"></div>
+    </div>
+    <div class="filter-group">
+      <div class="filter-label">Sort</div>
+      <div class="filters" id="checkinSortFilters">
+        <div class="filter-chip active" data-sort="desc">Newest first</div>
+        <div class="filter-chip" data-sort="asc">Oldest first</div>
+      </div>
     </div>
     <div id="checkinList"></div>
   </div>
@@ -445,6 +456,8 @@ let logSearchQuery = '';
 let logLocationFilter = 'all';
 let logUserFilter = 'all';
 let checkinUserFilter = 'all';
+let checkinLocationFilter = 'all';
+let checkinSortDir = 'desc';
 let editingSticker = null;
 let defaultOwner = localStorage.getItem('tagger-defaultowner') || '';
 let defaultLocation = localStorage.getItem('tagger-defaultlocation') || '';
@@ -695,6 +708,7 @@ async function loadData(){
   renderLocationChips();
   renderLogLocFilters();
   renderLogUserFilters();
+  renderCheckinLocFilters();
   renderCheckinUserFilters();
   setNextStickerNum();
   $('itemOwner').value = defaultOwner;
@@ -1099,6 +1113,30 @@ document.querySelectorAll('#checkinFilters .filter-chip').forEach(chip => {
   });
 });
 
+document.querySelectorAll('#checkinSortFilters .filter-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#checkinSortFilters .filter-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    checkinSortDir = chip.dataset.sort;
+    renderCheckinList();
+  });
+});
+
+function renderCheckinLocFilters(){
+  const el = $('checkinLocFilters');
+  el.innerHTML = '<div class="filter-chip active" data-locfilter="all">All locations</div>' +
+    locations.map(l => `<div class="filter-chip" data-locfilter="${escHtml(l)}">${escHtml(l)}</div>`).join('');
+  el.querySelectorAll('.filter-chip').forEach(chip => {
+    chip.classList.toggle('active', chip.dataset.locfilter === checkinLocationFilter);
+    chip.addEventListener('click', () => {
+      el.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      checkinLocationFilter = chip.dataset.locfilter;
+      renderCheckinList();
+    });
+  });
+}
+
 async function downloadStyledExcel(filename, headers, rows, textCols = [], photoCol = -1, columnOptions = {}){
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Sheet1');
@@ -1205,7 +1243,9 @@ function renderCheckinList(){
   if(checkinFilter === 'pending') filtered = items.filter(i => !i.arrived);
   else if(checkinFilter === 'received') filtered = items.filter(i => i.arrived);
   else if(checkinFilter === 'mismatch') filtered = items.filter(isQtyMismatch);
+  if(checkinLocationFilter !== 'all') filtered = filtered.filter(i => i.location === checkinLocationFilter);
   filtered = filtered.filter(i => itemMatchesUserFilter(i, checkinUserFilter));
+  filtered = filtered.slice().sort((a, b) => checkinSortDir === 'asc' ? a.sticker.localeCompare(b.sticker) : b.sticker.localeCompare(a.sticker));
   if(filtered.length === 0){
     list.innerHTML = `<div class="empty-state">No items here.</div>`;
     return;
@@ -1227,6 +1267,7 @@ function renderCheckinList(){
   list.querySelectorAll('.checkin-match').forEach(el => {
     el.addEventListener('click', () => {
       $('checkinSearch').value = el.dataset.sticker;
+      checkinSelectedSticker = el.dataset.sticker;
       renderCheckinMatches(el.dataset.sticker);
     });
   });
@@ -1246,11 +1287,20 @@ function renderCheckinMatches(query){
   }
   const matches = items.filter(i => i.sticker.includes(q) || i.name.toLowerCase().includes(q));
   if(matches.length === 0){
+    matchesEl.style.display = '';
     matchesEl.innerHTML = `<div class="empty-state">No item found matching "${escHtml(query)}".</div>`;
     $('checkinResult').innerHTML = '';
     checkinSelectedSticker = null;
     return;
   }
+  if(checkinSelectedSticker && matches.some(m => m.sticker === checkinSelectedSticker)){
+    matchesEl.style.display = 'none';
+    matchesEl.innerHTML = '';
+    renderCheckinResult(checkinSelectedSticker, matches.length > 1);
+    return;
+  }
+  matchesEl.style.display = '';
+  $('checkinResult').innerHTML = '';
   matchesEl.innerHTML = matches.map(i => `
     <div class="item checkin-match" data-sticker="${escHtml(i.sticker)}" style="cursor:pointer;">
       ${i.photo ? `<img class="thumb" src="${photoSrc(i.photo)}" data-lightbox="${escHtml(photoSrc(i.photo))}">` : `<div class="thumb empty">no photo</div>`}
@@ -1267,19 +1317,14 @@ function renderCheckinMatches(query){
     el.addEventListener('click', () => selectCheckinItem(el.dataset.sticker));
   });
   bindThumbLightbox(matchesEl);
-  if(checkinSelectedSticker && matches.some(m => m.sticker === checkinSelectedSticker)){
-    renderCheckinResult(checkinSelectedSticker);
-  } else {
-    $('checkinResult').innerHTML = '';
-  }
 }
 
 function selectCheckinItem(sticker){
   checkinSelectedSticker = sticker;
-  renderCheckinResult(sticker);
+  renderCheckinMatches($('checkinSearch').value);
 }
 
-function renderCheckinResult(sticker){
+function renderCheckinResult(sticker, showBack){
   const box = $('checkinResult');
   if(!sticker){ box.innerHTML = ''; return; }
   const match = items.find(i => i.sticker === sticker);
@@ -1294,6 +1339,7 @@ function renderCheckinResult(sticker){
   const defaultCondition = match.condition || 'good';
 
   box.innerHTML = `
+    ${showBack ? `<a href="#" class="back-link" id="checkinBackLink" style="margin-bottom:10px; display:inline-block;">&larr; Back to results</a>` : ''}
     <div class="item" style="margin-bottom:0;">
       ${match.photo ? `<img class="thumb" src="${photoSrc(match.photo)}" data-lightbox="${escHtml(photoSrc(match.photo))}">` : `<div class="thumb empty">no photo</div>`}
       <div class="body">
@@ -1338,6 +1384,13 @@ function renderCheckinResult(sticker){
   `;
 
   bindThumbLightbox(box);
+  if(showBack){
+    $('checkinBackLink').addEventListener('click', e => {
+      e.preventDefault();
+      checkinSelectedSticker = null;
+      renderCheckinMatches($('checkinSearch').value);
+    });
+  }
   if(!editable) return;
 
   let condition = defaultCondition;
@@ -1390,7 +1443,7 @@ function renderCheckinResult(sticker){
 
   if(alreadyChecked){
     $('updateReceiptBtn').addEventListener('click', saveReceipt);
-    $('cancelReceiptBtn').addEventListener('click', () => renderCheckinResult(sticker));
+    $('cancelReceiptBtn').addEventListener('click', () => renderCheckinResult(sticker, showBack));
   } else {
     $('confirmReceiptBtn').addEventListener('click', saveReceipt);
   }
