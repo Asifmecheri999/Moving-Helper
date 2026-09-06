@@ -1,10 +1,17 @@
 <!DOCTYPE html>
-<!-- deploy-check: autodeploy-test-1 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Moving Helper for A9</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0b57d0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Moving Helper">
 <style>
   :root{
     --ink:#0d1117;
@@ -39,21 +46,12 @@
     position:absolute; left:50%; transform:translateX(-50%);
   }
   header .count{font-family:var(--mono); font-size:13px; opacity:0.75;}
-  .tabs{
-    display:flex; background:var(--panel); border-bottom:1px solid var(--line);
-    position:sticky; top:52px; z-index:9;
-  }
-  .tab{
-    flex:1; text-align:center; padding:11px 4px; font-size:13.5px;
-    color:#8a8a80; border-bottom:2px solid transparent; cursor:pointer;
-  }
-  .tab.active{color:var(--blue); border-bottom-color:var(--blue); font-weight:600;}
   main{padding:14px;}
   .card{
     background:var(--panel); border:1px solid var(--line); border-radius:10px;
-    padding:14px; margin-bottom:12px;
+    padding:18px 16px; margin-bottom:14px;
   }
-  label{display:flex; align-items:baseline; flex-wrap:wrap; gap:6px; font-size:12.5px; color:#6b6a62; margin-bottom:6px; margin-top:14px;}
+  label{display:flex; align-items:baseline; flex-wrap:wrap; gap:6px; font-size:12.5px; color:#6b6a62; margin-bottom:8px; margin-top:22px;}
   label:first-of-type{margin-top:0;}
   input[type=text], input[type=number], select{
     width:100%; padding:10px 11px; border:1px solid var(--line); border-radius:8px;
@@ -197,14 +195,29 @@
   }
   .form-error{color:var(--red); font-size:13px; margin-top:10px;}
   #loginCode{
-    text-align:center; font-size:24px; letter-spacing:14px; font-family:var(--mono);
-    padding-left:16px;
+    text-align:center; font-size:18px; letter-spacing:6px; font-family:var(--mono);
   }
   .session-bar{
     display:flex; justify-content:space-between; align-items:center; padding:8px 14px;
     font-size:12px; color:#6b6a62; background:var(--panel); border-bottom:1px solid var(--line);
   }
   .session-bar a{color:var(--blue-dark); font-weight:600; text-decoration:none;}
+  .menu-btn{
+    display:block; width:100%; text-align:left; padding:20px 18px; margin-bottom:12px;
+    border-radius:12px; border:1px solid var(--line); background:var(--panel);
+    font-size:16.5px; font-weight:600; color:var(--ink); position:relative;
+  }
+  .menu-btn::after{content:'\203A'; position:absolute; right:18px; top:50%; transform:translateY(-50%); color:#b7c2d6; font-size:20px;}
+  .menu-btn:active{background:var(--paper);}
+  .menu-btn.logout{color:var(--red); border-color:var(--red-bg); background:var(--red-bg); margin-top:22px;}
+  .menu-btn.logout::after{display:none;}
+  .home-user-card{text-align:center; padding:22px 14px;}
+  .home-user-card .label{font-size:12.5px; color:#8a8a80;}
+  .home-user-card .name{font-size:19px; font-weight:700; margin-top:3px; color:var(--blue-dark);}
+  .back-link{
+    display:inline-block; color:var(--blue-dark); font-weight:600; text-decoration:none;
+    font-size:14px; margin-bottom:16px; padding:4px 0;
+  }
 </style>
 </head>
 <body>
@@ -212,13 +225,13 @@
 <div id="loginScreen" class="login-screen">
   <div class="login-card">
     <h1>Moving Helper for A9</h1>
-    <label>Your name</label>
+    <label>Username</label>
     <input type="text" id="loginUsername" autocomplete="username">
     <label>4-digit code</label>
     <input type="password" id="loginCode" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="&bull;&bull;&bull;&bull;">
     <button class="save-btn" id="loginBtn">Log in</button>
-    <button class="export-btn" id="signupBtn" style="margin-top:10px; margin-bottom:0;">New here? Create account</button>
     <div id="loginError" class="form-error" style="display:none;"></div>
+    <div style="font-size:11.5px; color:#8a94a6; text-align:center; margin-top:12px;">First time? Just type a username and a 4-digit code you'll remember — it's created automatically.</div>
   </div>
 </div>
 
@@ -234,16 +247,22 @@
   <a href="#" id="logoutLink">Log out</a>
 </div>
 
-<div class="tabs">
-  <div class="tab active" data-tab="add">Add item</div>
-  <div class="tab" data-tab="list">Log</div>
-  <div class="tab" data-tab="checkin">A9 Check-in</div>
-  <div class="tab" data-tab="admin" id="adminTab" style="display:none;">Admin</div>
-</div>
-
 <main>
 
-  <div id="addView">
+  <div id="homeView">
+    <div class="card home-user-card">
+      <div class="label">Signed in as</div>
+      <div class="name" id="homeUserLabel"></div>
+    </div>
+    <button class="menu-btn" data-view="add">Add item</button>
+    <button class="menu-btn" data-view="list">Log</button>
+    <button class="menu-btn" data-view="checkin">A9 Check-in</button>
+    <button class="menu-btn" data-view="admin" id="adminMenuBtn" style="display:none;">Admin</button>
+    <button class="menu-btn logout" id="homeLogoutBtn">Log out</button>
+  </div>
+
+  <div id="addView" style="display:none;">
+    <a href="#" class="back-link" data-back>&larr; Home</a>
     <div class="card">
       <div class="edit-banner" id="editBanner" style="display:none;">
         <span>Editing #<span id="editBannerNum"></span></span>
@@ -291,7 +310,8 @@
       <div class="chip-group" id="itemLocGroup"></div>
 
       <label>Exact location <span class="req">*</span></label>
-      <input type="text" id="itemLocDetail" placeholder="e.g. Rack 3, Cabinet B">
+      <input type="text" id="itemLocDetail" list="locDetailOptions" placeholder="e.g. Rack 3, Cabinet B">
+      <datalist id="locDetailOptions"></datalist>
 
       <label>Location at A9 (leave blank if unknown)</label>
       <select id="itemDestDetail">
@@ -327,6 +347,7 @@
   </div>
 
   <div id="listView" style="display:none;">
+    <a href="#" class="back-link" data-back>&larr; Home</a>
     <input type="text" id="logSearch" placeholder="Search by sticker number or name" style="margin-bottom:16px;">
     <div class="filter-group">
       <div class="filter-label">Status</div>
@@ -349,6 +370,7 @@
   </div>
 
   <div id="checkinView" style="display:none;">
+    <a href="#" class="back-link" data-back>&larr; Home</a>
     <button class="export-btn" id="exportCheckinBtn">Export receiving list (Excel)</button>
 
     <div class="card">
@@ -379,8 +401,9 @@
   </div>
 
   <div id="adminView" style="display:none;">
+    <a href="#" class="back-link" data-back>&larr; Home</a>
     <div class="card" style="font-size:12.5px; color:#6b6a62;">
-      Anyone can create their own account from the login screen. Remove a user below if needed.
+      Anyone gets an account automatically the first time they log in with a new username. Remove a user below if needed.
     </div>
     <div id="userList"></div>
   </div>
@@ -450,23 +473,42 @@ function showLoginScreen(){
 function showApp(){
   $('loginScreen').style.display = 'none';
   $('appRoot').style.display = 'block';
-  $('sessionUserLabel').textContent = session.username + (session.role === 'admin' ? ' (admin)' : '');
-  $('adminTab').style.display = session.role === 'admin' ? '' : 'none';
+  const label = session.username + (session.role === 'admin' ? ' (admin)' : '');
+  $('sessionUserLabel').textContent = label;
+  $('homeUserLabel').textContent = label;
+  $('adminMenuBtn').style.display = session.role === 'admin' ? '' : 'none';
+  showView('home');
 }
 
-async function submitAuth(path, defaultErrorMsg){
+const VIEWS = ['home', 'add', 'list', 'checkin', 'admin'];
+function showView(name){
+  VIEWS.forEach(v => { $(v + 'View').style.display = v === name ? 'block' : 'none'; });
+  if(name === 'list'){ renderLogUserFilters(); renderList(); }
+  else if(name === 'checkin'){ renderCheckinUserFilters(); renderCheckinStatus(); renderCheckinList(); }
+  else if(name === 'admin'){ renderUserList(); }
+}
+
+document.querySelectorAll('.menu-btn[data-view]').forEach(btn => {
+  btn.addEventListener('click', () => showView(btn.dataset.view));
+});
+document.querySelectorAll('[data-back]').forEach(link => {
+  link.addEventListener('click', e => { e.preventDefault(); showView('home'); });
+});
+$('homeLogoutBtn').addEventListener('click', () => $('logoutLink').click());
+
+async function submitAuth(){
   const username = $('loginUsername').value.trim();
   const code = $('loginCode').value.trim();
   $('loginError').style.display = 'none';
   if(!username || !code) return;
   try{
-    const res = await fetch(path, {
+    const res = await fetch('/api/login', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ username, code })
     });
     const data = await res.json();
-    if(!res.ok) throw new Error(data.error || defaultErrorMsg);
+    if(!res.ok) throw new Error(data.error || 'Could not log in');
     session = { token: data.token, username: data.username, role: data.role };
     localStorage.setItem('tagger-session', JSON.stringify(session));
     $('loginUsername').value = '';
@@ -474,13 +516,13 @@ async function submitAuth(path, defaultErrorMsg){
     showApp();
     loadData();
   }catch(e){
-    $('loginError').textContent = e.message || defaultErrorMsg;
+    $('loginError').textContent = e.message || 'Could not log in';
     $('loginError').style.display = 'block';
   }
 }
 
-$('loginBtn').addEventListener('click', () => submitAuth('/api/login', 'Login failed'));
-$('signupBtn').addEventListener('click', () => submitAuth('/api/signup', 'Could not create account'));
+$('loginBtn').addEventListener('click', submitAuth);
+$('loginCode').addEventListener('keydown', e => { if(e.key === 'Enter') submitAuth(); });
 
 $('logoutLink').addEventListener('click', async e => {
   e.preventDefault();
@@ -644,6 +686,7 @@ async function loadData(){
   $('itemOwner').value = defaultOwner;
   updateOwnerDefaultTick();
   updateOwnerOptions();
+  updateLocDetailOptions();
   renderList();
 }
 
@@ -655,6 +698,11 @@ function updateOwnerDefaultTick(){
 function updateOwnerOptions(){
   const names = Array.from(new Set(items.map(i => i.owner).filter(Boolean))).sort();
   $('ownerOptions').innerHTML = names.map(n => `<option value="${n}"></option>`).join('');
+}
+
+function updateLocDetailOptions(){
+  const details = Array.from(new Set(items.map(i => i.locationDetail).filter(Boolean))).sort();
+  $('locDetailOptions').innerHTML = details.map(d => `<option value="${escHtml(d)}"></option>`).join('');
 }
 
 $('ownerDefaultTick').addEventListener('click', () => {
@@ -808,7 +856,7 @@ $('saveBtn').addEventListener('click', async () => {
     }
     await saveItems();
     resetForm();
-    document.querySelector('.tab[data-tab="list"]').click();
+    showView('list');
   } else {
     const item = { sticker: stickerVal, ...fields, photo: photoKey, ts: new Date().toISOString(), createdBy: session.username };
     try{
@@ -833,6 +881,7 @@ $('saveBtn').addEventListener('click', async () => {
     resetForm();
   }
   updateOwnerOptions();
+  updateLocDetailOptions();
   renderList();
   updateHeaderCount();
 });
@@ -852,7 +901,7 @@ $('deleteItemBtn').addEventListener('click', async () => {
   resetForm();
   renderList();
   updateHeaderCount();
-  document.querySelector('.tab[data-tab="list"]').click();
+  showView('list');
 });
 
 function startEdit(sticker){
@@ -877,7 +926,7 @@ function startEdit(sticker){
   $('deleteItemBtn').style.display = 'block';
   updateOwnerDefaultTick();
   setFlag(item.flag || null);
-  document.querySelector('.tab[data-tab="add"]').click();
+  showView('add');
 }
 
 function resetForm(){
@@ -1005,32 +1054,6 @@ document.querySelectorAll('#checkinFilters .filter-chip').forEach(chip => {
     chip.classList.add('active');
     checkinFilter = chip.dataset.cfilter;
     renderCheckinList();
-  });
-});
-
-document.querySelectorAll('.tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    $('addView').style.display = 'none';
-    $('listView').style.display = 'none';
-    $('checkinView').style.display = 'none';
-    $('adminView').style.display = 'none';
-    if(tab.dataset.tab === 'add'){
-      $('addView').style.display = 'block';
-    } else if(tab.dataset.tab === 'list'){
-      $('listView').style.display = 'block';
-      renderLogUserFilters();
-      renderList();
-    } else if(tab.dataset.tab === 'checkin'){
-      $('checkinView').style.display = 'block';
-      renderCheckinUserFilters();
-      renderCheckinStatus();
-      renderCheckinList();
-    } else {
-      $('adminView').style.display = 'block';
-      renderUserList();
-    }
   });
 });
 

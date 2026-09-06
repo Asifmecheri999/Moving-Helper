@@ -48,36 +48,28 @@ async function login(request, env) {
   try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
   const username = (body.username || '').trim();
   const code = (body.code || '').trim();
-  if (!username || !code) return jsonResponse({ error: 'username and code required' }, 400);
-  const user = await env.DB.prepare('SELECT username, salt, code_hash, role FROM users WHERE username = ?').bind(username).first();
-  if (!user) return jsonResponse({ error: 'invalid username or code' }, 401);
-  const hash = await sha256Hex(user.salt + code);
-  if (hash !== user.code_hash) return jsonResponse({ error: 'invalid username or code' }, 401);
+  if (!username || !/^\d{4}$/.test(code)) return jsonResponse({ error: 'enter a username and a 4-digit code' }, 400);
+
+  let user = await env.DB.prepare('SELECT username, salt, code_hash, role FROM users WHERE username = ?').bind(username).first();
+  if (!user) {
+    const salt = crypto.randomUUID();
+    const codeHash = await sha256Hex(salt + code);
+    try {
+      await env.DB.prepare('INSERT INTO users (username, salt, code_hash, role, created_at) VALUES (?, ?, ?, ?, ?)')
+        .bind(username, salt, codeHash, 'user', new Date().toISOString()).run();
+    } catch (e) {
+      return jsonResponse({ error: 'that username was just taken, try again' }, 409);
+    }
+    user = { username, salt, code_hash: codeHash, role: 'user' };
+  } else {
+    const hash = await sha256Hex(user.salt + code);
+    if (hash !== user.code_hash) return jsonResponse({ error: 'wrong code for that username' }, 401);
+  }
+
   const token = crypto.randomUUID();
   await env.DB.prepare('INSERT INTO sessions (token, username, created_at) VALUES (?, ?, ?)')
     .bind(token, user.username, new Date().toISOString()).run();
   return jsonResponse({ token, username: user.username, role: user.role });
-}
-
-async function signup(request, env) {
-  let body;
-  try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
-  const username = (body.username || '').trim();
-  const code = (body.code || '').trim();
-  if (!username || !/^\d{4}$/.test(code)) return jsonResponse({ error: 'enter a name and a 4-digit code' }, 400);
-  const salt = crypto.randomUUID();
-  const codeHash = await sha256Hex(salt + code);
-  try {
-    await env.DB.prepare('INSERT INTO users (username, salt, code_hash, role, created_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(username, salt, codeHash, 'user', new Date().toISOString()).run();
-  } catch (e) {
-    if (String(e.message || e).includes('UNIQUE')) return jsonResponse({ error: 'that name is already taken' }, 409);
-    return jsonResponse({ error: String(e.message || e) }, 500);
-  }
-  const token = crypto.randomUUID();
-  await env.DB.prepare('INSERT INTO sessions (token, username, created_at) VALUES (?, ?, ?)')
-    .bind(token, username, new Date().toISOString()).run();
-  return jsonResponse({ token, username, role: 'user' }, 201);
 }
 
 async function logout(request, env) {
@@ -194,7 +186,6 @@ export default {
     const path = url.pathname;
 
     if (path === '/api/login' && request.method === 'POST') return login(request, env);
-    if (path === '/api/signup' && request.method === 'POST') return signup(request, env);
 
     if (path.startsWith('/api/photos/') && request.method === 'GET') {
       return getPhoto(decodeURIComponent(path.slice('/api/photos/'.length)), env);
