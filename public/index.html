@@ -272,7 +272,8 @@
       </div>
 
       <label>Item name <span class="req">*</span></label>
-      <input type="text" id="itemName" placeholder="e.g. Bench drill, M4 bolts box">
+      <input type="text" id="itemName" list="catalogOptions" placeholder="e.g. Bench drill, M4 bolts box">
+      <datalist id="catalogOptions"></datalist>
 
       <label>Type <span class="req">*</span></label>
       <div class="chip-group" id="itemTypeGroup">
@@ -395,6 +396,21 @@
     <div class="card" style="font-size:12.5px; color:#6b6a62;">
       Anyone gets an account automatically the first time they log in with a new username. Remove a user below if needed.
     </div>
+
+    <div class="card">
+      <label>Upload item list (CSV: Name, Qty, Location)</label>
+      <input type="file" accept=".csv" id="catalogFile">
+      <div style="font-size:11.5px; color:#8a94a6; margin-top:8px;">
+        Up to three columns, Name / Qty / Location (a header row is fine, Location is optional). After choosing a file you'll be asked what to do with it.
+      </div>
+      <div id="catalogChoice" style="display:none; margin-top:14px;">
+        <div style="font-size:12.5px; color:#6b6a62; margin-bottom:10px;" id="catalogPreviewText"></div>
+        <button class="save-btn" id="catalogCreateLogsBtn" style="margin-top:0;">Create log entries for these items</button>
+        <button class="export-btn" id="catalogSuggestOnlyBtn" style="margin-top:10px;">Just save as name suggestions</button>
+      </div>
+      <div id="catalogStatus" style="font-size:12px; color:#6b6a62; margin-top:10px;"></div>
+    </div>
+
     <div id="userList"></div>
   </div>
 
@@ -425,6 +441,8 @@ let defaultOwner = localStorage.getItem('tagger-defaultowner') || '';
 let defaultLocation = localStorage.getItem('tagger-defaultlocation') || '';
 let locationValue = '';
 let offline = false;
+let catalog = [];
+let pendingCatalogRows = [];
 
 let session = null;
 try{ session = JSON.parse(localStorage.getItem('tagger-session') || 'null'); }catch(e){ session = null; }
@@ -436,7 +454,7 @@ function escHtml(v){
 }
 
 function canEdit(item){
-  return !!session && (session.role === 'admin' || item.createdBy === session.username);
+  return !!session && (session.role === 'admin' || !item.createdBy || item.createdBy === session.username);
 }
 
 async function apiFetch(path, options = {}){
@@ -675,6 +693,16 @@ async function loadData(){
   updateOwnerOptions();
   updateLocDetailOptions();
   renderList();
+
+  try{
+    const catRes = await apiFetch('/api/catalog');
+    if(catRes.ok) catalog = await catRes.json();
+  }catch(e){}
+  updateCatalogOptions();
+}
+
+function updateCatalogOptions(){
+  $('catalogOptions').innerHTML = catalog.map(c => `<option value="${escHtml(c.name)}"></option>`).join('');
 }
 
 function updateOwnerDefaultTick(){
@@ -791,7 +819,11 @@ function checkSaveEnabled(){
   const locDetail = $('itemLocDetail').value.trim();
   $('saveBtn').disabled = !(name && owner && flag && locDetail);
 }
-$('itemName').addEventListener('input', checkSaveEnabled);
+$('itemName').addEventListener('input', () => {
+  checkSaveEnabled();
+  const match = catalog.find(c => c.name.toLowerCase() === $('itemName').value.trim().toLowerCase());
+  if(match) $('itemQty').value = match.qty;
+});
 $('itemLocDetail').addEventListener('input', checkSaveEnabled);
 $('itemOwner').addEventListener('input', () => { checkSaveEnabled(); updateOwnerDefaultTick(); });
 
@@ -835,7 +867,11 @@ $('saveBtn').addEventListener('click', async () => {
         body: JSON.stringify({ ...fields, photo: photoKey })
       });
       if(!res.ok) throw new Error('update failed');
-      if(item) delete item._dirty;
+      const data = await res.json();
+      if(item){
+        delete item._dirty;
+        if(data.claimed) item.createdBy = data.claimed;
+      }
       showToast(`Updated #${stickerVal}`);
     }catch(e){
       if(item) item._dirty = true;
@@ -1312,7 +1348,9 @@ function renderCheckinResult(sticker){
         body: JSON.stringify({ arrived: true, receivedQty, condition, checkedAt })
       });
       if(!res.ok) throw new Error('checkin sync failed');
+      const data = await res.json();
       delete match._dirty;
+      if(data.claimed) match.createdBy = data.claimed;
     }catch(e){
       match._dirty = true;
     }
@@ -1360,6 +1398,83 @@ async function renderUserList(){
     el.innerHTML = `<div class="empty-state">Could not load users.</div>`;
   }
 }
+
+function parseCatalogCsv(text){
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if(!lines.length) return [];
+  const startIdx = /^name\s*,\s*qty/i.test(lines[0]) ? 1 : 0;
+  const out = [];
+  for(let i = startIdx; i < lines.length; i++){
+    const parts = lines[i].split(',');
+    const name = (parts[0] || '').trim().replace(/^"|"$/g, '');
+    const qty = parseInt((parts[1] || '0').trim(), 10) || 0;
+    const location = (parts[2] || '').trim();
+    if(name) out.push({ name, qty, location });
+  }
+  return out;
+}
+
+function resetCatalogUpload(){
+  $('catalogFile').value = '';
+  $('catalogChoice').style.display = 'none';
+  pendingCatalogRows = [];
+}
+
+$('catalogFile').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    pendingCatalogRows = parseCatalogCsv(ev.target.result);
+    $('catalogStatus').textContent = '';
+    if(!pendingCatalogRows.length){
+      $('catalogStatus').textContent = 'No items found in that file.';
+      $('catalogChoice').style.display = 'none';
+      return;
+    }
+    $('catalogPreviewText').textContent = `Found ${pendingCatalogRows.length} items. What should we do with them?`;
+    $('catalogChoice').style.display = 'block';
+  };
+  reader.readAsText(file);
+});
+
+$('catalogSuggestOnlyBtn').addEventListener('click', async () => {
+  try{
+    const res = await apiFetch('/api/catalog', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(pendingCatalogRows.map(r => ({ name: r.name, qty: r.qty })))
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Upload failed');
+    catalog = pendingCatalogRows.map(r => ({ name: r.name, qty: r.qty }));
+    updateCatalogOptions();
+    $('catalogStatus').textContent = `Saved ${data.count} name suggestions.`;
+    showToast(`Saved ${data.count} name suggestions`);
+    resetCatalogUpload();
+  }catch(e){
+    $('catalogStatus').textContent = 'Could not save suggestions.';
+  }
+});
+
+$('catalogCreateLogsBtn').addEventListener('click', async () => {
+  if(!confirm(`Create ${pendingCatalogRows.length} log entries from this file? Each will get its own sticker number automatically.`)) return;
+  try{
+    const res = await apiFetch('/api/items/bulk', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(pendingCatalogRows)
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Import failed');
+    $('catalogStatus').textContent = `Created ${data.count} log entries — anyone can open them from the Log tab to finish tagging (photo, type, etc).`;
+    showToast(`Created ${data.count} log entries`);
+    resetCatalogUpload();
+    await loadData();
+  }catch(e){
+    $('catalogStatus').textContent = 'Could not create log entries.';
+  }
+});
 
 if(session && session.token){
   showApp();

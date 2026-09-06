@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS catalog (
+  name TEXT PRIMARY KEY,
+  qty INTEGER
+);

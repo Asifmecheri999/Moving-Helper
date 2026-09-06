@@ -32,3 +32,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   username TEXT NOT NULL,
   created_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS catalog (
+  name TEXT PRIMARY KEY,
+  qty INTEGER
+);
