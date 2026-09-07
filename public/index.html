@@ -373,16 +373,9 @@
       <div class="filter-label">Location</div>
       <div class="filters" id="checkinLocFilters"></div>
     </div>
-    <div class="filter-group">
+    <div class="filter-group" id="checkinTeamGroup" style="display:none;">
       <div class="filter-label">Team</div>
       <div class="filters" id="checkinUserFilters"></div>
-    </div>
-    <div class="filter-group">
-      <div class="filter-label">Sort</div>
-      <div class="filters" id="checkinSortFilters">
-        <div class="filter-chip active" data-sort="desc">Newest first</div>
-        <div class="filter-chip" data-sort="asc">Oldest first</div>
-      </div>
     </div>
     <div id="checkinList"></div>
   </div>
@@ -437,7 +430,6 @@ let selectMode = false;
 let selectedStickers = new Set();
 let checkinUserFilter = 'all';
 let checkinLocationFilter = 'all';
-let checkinSortDir = 'desc';
 let editingSticker = null;
 let defaultOwner = localStorage.getItem('tagger-defaultowner') || '';
 let defaultLocation = localStorage.getItem('tagger-defaultlocation') || '';
@@ -1089,15 +1081,6 @@ document.querySelectorAll('#checkinFilters .filter-chip').forEach(chip => {
   });
 });
 
-document.querySelectorAll('#checkinSortFilters .filter-chip').forEach(chip => {
-  chip.addEventListener('click', () => {
-    document.querySelectorAll('#checkinSortFilters .filter-chip').forEach(c => c.classList.remove('active'));
-    chip.classList.add('active');
-    checkinSortDir = chip.dataset.sort;
-    renderCheckinList();
-  });
-});
-
 function renderCheckinLocFilters(){
   const el = $('checkinLocFilters');
   el.innerHTML = '<div class="filter-chip active" data-locfilter="all">All locations</div>' +
@@ -1178,10 +1161,14 @@ function isQtyMismatch(i){
   return i.arrived && i.receivedQty !== undefined && String(i.receivedQty) !== String(i.qty);
 }
 
+function checkinScopedItems(){
+  return session.role === 'admin' ? items : items.filter(i => i.owner === defaultOwner);
+}
+
 $('exportCheckinBtn').addEventListener('click', async () => {
   showToast('Preparing Excel file...');
   const headers = ['Sticker','Name','Expected Qty','Received Qty','Status','Qty Flag','Condition','Checked At','Entered By','Photo'];
-  const rows = await Promise.all(items.map(async i => [
+  const rows = await Promise.all(checkinScopedItems().map(async i => [
     i.sticker, i.name, i.qty,
     i.arrived ? (i.receivedQty ?? '') : '',
     i.arrived ? 'Received' : 'Pending to receive',
@@ -1196,32 +1183,33 @@ $('exportCheckinBtn').addEventListener('click', async () => {
 
 function renderCheckinStatus(){
   const el = $('checkinStatus');
-  if(items.length === 0){
+  const scoped = checkinScopedItems();
+  if(scoped.length === 0){
     el.textContent = 'No items logged yet.';
     return;
   }
-  const arrivedCount = items.filter(i => i.arrived).length;
-  const damagedCount = items.filter(i => i.arrived && i.condition === 'damaged').length;
-  const mismatchCount = items.filter(isQtyMismatch).length;
-  let txt = `${items.length} items logged · ${arrivedCount} received`;
+  const arrivedCount = scoped.filter(i => i.arrived).length;
+  const damagedCount = scoped.filter(i => i.arrived && i.condition === 'damaged').length;
+  const mismatchCount = scoped.filter(isQtyMismatch).length;
+  let txt = `${scoped.length} items logged · ${arrivedCount} received`;
   if(damagedCount) txt += ` · ${damagedCount} damaged`;
   if(mismatchCount) txt += ` · ${mismatchCount} qty mismatch`;
   el.textContent = txt + '.';
 }
 
 function renderCheckinUserFilters(){
+  $('checkinTeamGroup').style.display = session.role === 'admin' ? 'block' : 'none';
   renderUserFilterChips($('checkinUserFilters'), checkinUserFilter, v => { checkinUserFilter = v; renderCheckinList(); });
 }
 
 function renderCheckinList(){
   const list = $('checkinList');
-  let filtered = items;
-  if(checkinFilter === 'pending') filtered = items.filter(i => !i.arrived);
-  else if(checkinFilter === 'received') filtered = items.filter(i => i.arrived);
-  else if(checkinFilter === 'mismatch') filtered = items.filter(isQtyMismatch);
+  let filtered = checkinScopedItems();
+  if(checkinFilter === 'pending') filtered = filtered.filter(i => !i.arrived);
+  else if(checkinFilter === 'received') filtered = filtered.filter(i => i.arrived);
+  else if(checkinFilter === 'mismatch') filtered = filtered.filter(isQtyMismatch);
   if(checkinLocationFilter !== 'all') filtered = filtered.filter(i => i.location === checkinLocationFilter);
   filtered = filtered.filter(i => itemMatchesUserFilter(i, checkinUserFilter));
-  filtered = filtered.slice().sort((a, b) => checkinSortDir === 'asc' ? a.sticker.localeCompare(b.sticker) : b.sticker.localeCompare(a.sticker));
   if(filtered.length === 0){
     list.innerHTML = `<div class="empty-state">No items here.</div>`;
     return;
@@ -1261,7 +1249,7 @@ function renderCheckinMatches(query){
     checkinSelectedSticker = null;
     return;
   }
-  const matches = items.filter(i => i.sticker.includes(q) || i.name.toLowerCase().includes(q));
+  const matches = checkinScopedItems().filter(i => i.sticker.includes(q) || i.name.toLowerCase().includes(q));
   if(matches.length === 0){
     matchesEl.style.display = '';
     matchesEl.innerHTML = `<div class="empty-state">No item found matching "${escHtml(query)}".</div>`;
