@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS users (
   salt TEXT NOT NULL,
   code_hash TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'user',
+  team TEXT,
   created_at TEXT
 );
 

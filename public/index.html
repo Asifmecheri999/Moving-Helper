@@ -98,8 +98,8 @@
     background:var(--panel); font-size:13.5px; color:#6b6a62; font-weight:500;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:center;
   }
-  .chip.on{background:var(--blue); color:#fff; border-color:var(--blue);}
-  .chip-x{display:none; margin-left:6px; font-weight:700;}
+  .chip.on{background:var(--blue); color:#fff; border-color:var(--blue); position:relative; padding-right:26px;}
+  .chip-x{display:none; position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700;}
   .chip.on .chip-x{display:inline;}
   .req{color:var(--red); font-weight:700;}
   .badge{
@@ -240,6 +240,7 @@
     <div class="card home-user-card">
       <div class="label">Signed in as</div>
       <div class="name" id="homeUserLabel"></div>
+      <div class="label" id="homeTeamLocLabel" style="margin-top:8px;"></div>
     </div>
     <button class="menu-btn" data-view="add">Add item</button>
     <button class="menu-btn" data-view="list">Log</button>
@@ -297,11 +298,6 @@
       <div id="addLocationGroup" style="display:none;">
         <label>Location</label>
         <div class="chip-group" id="itemLocGroup"></div>
-      </div>
-
-      <div id="addTeamGroup" style="display:none;">
-        <label>Team</label>
-        <div class="chip-group" id="itemTeamGroup"></div>
       </div>
 
       <label>Exact location if available (rack, cabinet, area name)</label>
@@ -405,8 +401,22 @@
       </div>
       <div id="adminLocList" style="margin-top:10px;"></div>
     </div>
+    <div class="card">
+      <label style="font-size:17px; font-weight:700; color:var(--ink);">Create a team login</label>
+      <div style="font-size:12.5px; color:#6b6a62; margin-bottom:6px;">One shared username/code per team — everyone on that team uses it.</div>
+      <label>Username</label>
+      <input type="text" id="newUserUsername" placeholder="e.g. swarms">
+      <label>4-digit code</label>
+      <input type="text" id="newUserCode" inputmode="numeric" maxlength="4" placeholder="1234">
+      <label>Team</label>
+      <select id="newUserTeam">
+        <option value="">No team</option>
+      </select>
+      <button class="save-btn" id="createUserBtn" style="margin-top:14px;">Create login</button>
+      <div id="createUserStatus" style="font-size:12px; color:#6b6a62; margin-top:10px;"></div>
+    </div>
     <div class="card" style="font-size:12.5px; color:#6b6a62;">
-      Anyone gets an account automatically the first time they log in with a new username. Remove a user below if needed.
+      Anyone can also still self-register by typing a new username and code the first time — those accounts start with no team.
     </div>
     <div id="userList"></div>
   </div>
@@ -419,10 +429,9 @@
       <button type="button" class="chip" id="settingsAddLocChip" style="margin-top:8px;">+ Add a location</button>
       <input type="text" id="settingsNewLocInput" placeholder="Type a location name" style="display:none; margin-top:8px;">
 
-      <label style="margin-top:18px;">Team <span class="req">*</span> <span style="font-weight:400; color:#8a94a6;">(pick one or more)</span></label>
-      <div class="chip-group" id="settingsTeamGroup"></div>
-      <button type="button" class="chip" id="settingsAddTeamChip" style="margin-top:8px;">+ My team isn't listed</button>
-      <input type="text" id="settingsNewTeamInput" placeholder="Type your team name" style="display:none; margin-top:8px;">
+      <label style="margin-top:18px;">Team</label>
+      <div style="font-size:15px; font-weight:600; color:var(--blue-dark);" id="settingsTeamLabel"></div>
+      <div style="font-size:12px; color:#8a94a6; margin-top:2px;">Your team is set by admin — ask them to change it.</div>
 
       <button class="save-btn" id="settingsSaveBtn" style="margin-top:18px;">Save</button>
       <div id="settingsError" class="form-error" style="display:none;"></div>
@@ -431,18 +440,13 @@
 
   <div id="setupView" style="display:none;">
     <div class="card">
-      <label style="font-size:17px; font-weight:700; color:var(--ink);">Set up your location & team</label>
+      <label style="font-size:17px; font-weight:700; color:var(--ink);">Set up your location</label>
       <div style="font-size:12.5px; color:#6b6a62; margin-bottom:6px;">Just once — you can change this later from Settings.</div>
 
       <label style="margin-top:14px;">Location <span class="req">*</span> <span style="font-weight:400; color:#8a94a6;">(pick one or more)</span></label>
       <div class="chip-group" id="setupLocGroup"></div>
       <button type="button" class="chip" id="setupAddLocChip" style="margin-top:8px;">+ Add a location</button>
       <input type="text" id="setupNewLocInput" placeholder="Type a location name" style="display:none; margin-top:8px;">
-
-      <label style="margin-top:18px;">Team <span class="req">*</span> <span style="font-weight:400; color:#8a94a6;">(pick one or more)</span></label>
-      <div class="chip-group" id="setupTeamGroup"></div>
-      <button type="button" class="chip" id="setupAddTeamChip" style="margin-top:8px;">+ My team isn't listed</button>
-      <input type="text" id="setupNewTeamInput" placeholder="Type your team name" style="display:none; margin-top:8px;">
 
       <button class="save-btn" id="setupContinueBtn" style="margin-top:18px;">Continue</button>
       <div id="setupError" class="form-error" style="display:none;"></div>
@@ -474,22 +478,8 @@ let checkinUserFilter = 'all';
 let checkinLocationFilter = 'all';
 let editingSticker = null;
 let defaultLocations = [];
-try{
-  const rawDefaultLocs = localStorage.getItem('tagger-defaultlocations');
-  defaultLocations = rawDefaultLocs ? JSON.parse(rawDefaultLocs) : [];
-  const legacyLoc = localStorage.getItem('tagger-defaultlocation');
-  if(!defaultLocations.length && legacyLoc) defaultLocations = [legacyLoc];
-}catch(e){ defaultLocations = []; }
-let defaultTeams = [];
-try{
-  const rawDefaultTeams = localStorage.getItem('tagger-defaultteams');
-  defaultTeams = rawDefaultTeams ? JSON.parse(rawDefaultTeams) : [];
-  const legacyOwner = localStorage.getItem('tagger-defaultowner');
-  if(!defaultTeams.length && legacyOwner) defaultTeams = [legacyOwner];
-}catch(e){ defaultTeams = []; }
 let itemLocationValue = '';
-let itemTeamValue = '';
-let defaultLocDetail = localStorage.getItem('tagger-locdetail') || '';
+let defaultLocDetail = '';
 let offline = false;
 let teamList = [];
 
@@ -497,6 +487,46 @@ let session = null;
 try{ session = JSON.parse(localStorage.getItem('tagger-session') || 'null'); }catch(e){ session = null; }
 
 const $ = id => document.getElementById(id);
+
+function scopedKey(base){
+  return session && session.username ? `${base}:${session.username}` : base;
+}
+
+function loadUserDefaults(){
+  defaultLocations = [];
+  defaultLocDetail = '';
+  if(!session || !session.username) return;
+
+  const locKey = scopedKey('tagger-defaultlocations');
+  const rawScoped = localStorage.getItem(locKey);
+  if(rawScoped !== null){
+    try{ defaultLocations = JSON.parse(rawScoped); }catch(e){ defaultLocations = []; }
+  } else {
+    try{
+      const legacyLocs = localStorage.getItem('tagger-defaultlocations');
+      const legacyLoc = localStorage.getItem('tagger-defaultlocation');
+      if(legacyLocs) defaultLocations = JSON.parse(legacyLocs);
+      else if(legacyLoc) defaultLocations = [legacyLoc];
+    }catch(e){ defaultLocations = []; }
+    localStorage.removeItem('tagger-defaultlocations');
+    localStorage.removeItem('tagger-defaultlocation');
+    if(defaultLocations.length) localStorage.setItem(locKey, JSON.stringify(defaultLocations));
+  }
+
+  const detailKey = scopedKey('tagger-locdetail');
+  const scopedDetail = localStorage.getItem(detailKey);
+  if(scopedDetail !== null){
+    defaultLocDetail = scopedDetail;
+  } else {
+    defaultLocDetail = localStorage.getItem('tagger-locdetail') || '';
+    localStorage.removeItem('tagger-locdetail');
+    if(defaultLocDetail) localStorage.setItem(detailKey, defaultLocDetail);
+  }
+
+  localStorage.removeItem('tagger-defaultowner');
+  localStorage.removeItem('tagger-defaultteams');
+}
+loadUserDefaults();
 
 function escHtml(v){
   return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -531,12 +561,20 @@ function showLoginScreen(){
   $('appRoot').style.display = 'none';
 }
 
+function updateHomeLabel(){
+  const parts = [];
+  if(session.team) parts.push(session.team);
+  if(defaultLocations.length) parts.push(defaultLocations.join(', '));
+  $('homeTeamLocLabel').textContent = parts.join(' · ');
+}
+
 function showApp(){
   $('loginScreen').style.display = 'none';
   $('appRoot').style.display = 'block';
   $('homeUserLabel').textContent = session.username + (session.role === 'admin' ? ' (admin)' : '');
   $('adminMenuBtn').style.display = session.role === 'admin' ? '' : 'none';
-  if(defaultLocations.length === 0 || defaultTeams.length === 0){
+  updateHomeLabel();
+  if(defaultLocations.length === 0){
     showView('setup');
   } else {
     showView('home');
@@ -620,7 +658,7 @@ async function loadLocationsList(){
   }catch(e){}
 }
 
-async function registerNewTeamOrLocation(picker, list, addPath){
+async function registerNewLocation(picker, list, addPath){
   const val = picker.getNewValue();
   if(val && !list.includes(val)){
     try{
@@ -635,67 +673,47 @@ async function registerNewTeamOrLocation(picker, list, addPath){
 }
 
 let setupLocPicker = null;
-let setupTeamPicker = null;
 
 function enterSetup(){
   setupLocPicker = makeMultiPicker('setup', 'Loc', () => locations, defaultLocations);
-  setupTeamPicker = makeMultiPicker('setup', 'Team', () => teamList, defaultTeams);
 }
 
 $('setupContinueBtn').addEventListener('click', async () => {
   const selectedLocations = setupLocPicker.getSelected();
-  const selectedTeams = setupTeamPicker.getSelected();
   $('setupError').style.display = 'none';
   if(selectedLocations.length === 0){
     $('setupError').textContent = 'Please pick at least one location.';
     $('setupError').style.display = 'block';
     return;
   }
-  if(selectedTeams.length === 0){
-    $('setupError').textContent = 'Please pick or create a team.';
-    $('setupError').style.display = 'block';
-    return;
-  }
-  await registerNewTeamOrLocation(setupLocPicker, locations, '/api/locations/add');
-  await registerNewTeamOrLocation(setupTeamPicker, teamList, '/api/teams/add');
+  await registerNewLocation(setupLocPicker, locations, '/api/locations/add');
   defaultLocations = selectedLocations;
-  localStorage.setItem('tagger-defaultlocations', JSON.stringify(defaultLocations));
-  defaultTeams = selectedTeams;
-  localStorage.setItem('tagger-defaultteams', JSON.stringify(defaultTeams));
+  localStorage.setItem(scopedKey('tagger-defaultlocations'), JSON.stringify(defaultLocations));
+  updateHomeLabel();
   showView('home');
   loadData();
 });
 
 let settingsLocPicker = null;
-let settingsTeamPicker = null;
 
 function initSettingsPickers(){
   settingsLocPicker = makeMultiPicker('settings', 'Loc', () => locations, defaultLocations);
-  settingsTeamPicker = makeMultiPicker('settings', 'Team', () => teamList, defaultTeams);
+  $('settingsTeamLabel').textContent = session.team || 'None — ask admin to assign one';
 }
 
 $('settingsSaveBtn').addEventListener('click', async () => {
   const selectedLocations = settingsLocPicker.getSelected();
-  const selectedTeams = settingsTeamPicker.getSelected();
   $('settingsError').style.display = 'none';
   if(selectedLocations.length === 0){
     $('settingsError').textContent = 'Please pick at least one location.';
     $('settingsError').style.display = 'block';
     return;
   }
-  if(selectedTeams.length === 0){
-    $('settingsError').textContent = 'Please pick or create a team.';
-    $('settingsError').style.display = 'block';
-    return;
-  }
-  await registerNewTeamOrLocation(settingsLocPicker, locations, '/api/locations/add');
-  await registerNewTeamOrLocation(settingsTeamPicker, teamList, '/api/teams/add');
+  await registerNewLocation(settingsLocPicker, locations, '/api/locations/add');
   defaultLocations = selectedLocations;
-  localStorage.setItem('tagger-defaultlocations', JSON.stringify(defaultLocations));
-  defaultTeams = selectedTeams;
-  localStorage.setItem('tagger-defaultteams', JSON.stringify(defaultTeams));
+  localStorage.setItem(scopedKey('tagger-defaultlocations'), JSON.stringify(defaultLocations));
   renderAddLocationChips();
-  renderAddTeamChips();
+  updateHomeLabel();
   showToast('Settings saved');
   showView('home');
 });
@@ -713,12 +731,13 @@ async function submitAuth(){
     });
     const data = await res.json();
     if(!res.ok) throw new Error(data.error || 'Could not log in');
-    session = { token: data.token, username: data.username, role: data.role };
+    session = { token: data.token, username: data.username, role: data.role, team: data.team || null };
     localStorage.setItem('tagger-session', JSON.stringify(session));
+    loadUserDefaults();
     $('loginUsername').value = '';
     $('loginCode').value = '';
     await Promise.all([loadTeams(), loadLocationsList()]);
-    if(defaultLocations.length === 0 || defaultTeams.length === 0){
+    if(defaultLocations.length === 0){
       enterSetup();
     }
     showApp();
@@ -846,7 +865,6 @@ async function loadData(){
   setNextStickerNum();
   $('itemLocDetail').value = defaultLocDetail;
   renderAddLocationChips();
-  renderAddTeamChips();
   renderLocDetailChips();
   renderList();
 }
@@ -867,26 +885,6 @@ function renderAddLocationChips(){
     c.addEventListener('click', () => {
       itemLocationValue = c.dataset.value;
       el.querySelectorAll('.chip').forEach(x => x.classList.toggle('on', x.dataset.value === itemLocationValue));
-    });
-  });
-}
-
-function renderAddTeamChips(){
-  const wrap = $('addTeamGroup');
-  if(defaultTeams.length <= 1){
-    wrap.style.display = 'none';
-    itemTeamValue = defaultTeams[0] || '';
-    return;
-  }
-  wrap.style.display = 'block';
-  if(!defaultTeams.includes(itemTeamValue)) itemTeamValue = defaultTeams[0];
-  const el = $('itemTeamGroup');
-  el.innerHTML = defaultTeams.map(t => `<button type="button" class="chip" data-value="${escHtml(t)}">${escHtml(t)}</button>`).join('');
-  el.querySelectorAll('.chip').forEach(c => {
-    c.classList.toggle('on', c.dataset.value === itemTeamValue);
-    c.addEventListener('click', () => {
-      itemTeamValue = c.dataset.value;
-      el.querySelectorAll('.chip').forEach(x => x.classList.toggle('on', x.dataset.value === itemTeamValue));
     });
   });
 }
@@ -1011,7 +1009,7 @@ $('saveBtn').addEventListener('click', async () => {
   const locationDetail = $('itemLocDetail').value.trim();
   if(locationDetail){
     defaultLocDetail = locationDetail;
-    localStorage.setItem('tagger-locdetail', defaultLocDetail);
+    localStorage.setItem(scopedKey('tagger-locdetail'), defaultLocDetail);
   }
   const fields = {
     sticker: stickerVal,
@@ -1058,7 +1056,7 @@ $('saveBtn').addEventListener('click', async () => {
     resetForm();
     showView('list');
   } else {
-    const item = { sticker: stickerVal, ...fields, location: itemLocationValue, owner: itemTeamValue, photo: photoKey, ts: new Date().toISOString(), createdBy: session.username };
+    const item = { sticker: stickerVal, ...fields, location: itemLocationValue, owner: session.team || '', photo: photoKey, ts: new Date().toISOString(), createdBy: session.username };
     try{
       const res = await apiFetch('/api/items', {
         method: 'POST',
@@ -1120,7 +1118,6 @@ function startEdit(sticker){
   $('saveBtn').textContent = 'Update item';
   $('deleteItemBtn').style.display = canDelete(item) ? 'block' : 'none';
   $('addLocationGroup').style.display = 'none';
-  $('addTeamGroup').style.display = 'none';
   showView('add');
   renderLocDetailChips();
   checkSaveEnabled();
@@ -1140,7 +1137,6 @@ function resetForm(){
   $('saveBtn').textContent = 'Save item';
   $('deleteItemBtn').style.display = 'none';
   renderAddLocationChips();
-  renderAddTeamChips();
   renderLocDetailChips();
   checkSaveEnabled();
 }
@@ -1187,7 +1183,7 @@ function renderUserFilterChips(el, currentValue, onPick){
 
 function teamScopedItems(){
   if(session.role === 'admin') return items;
-  if(defaultTeams.length) return items.filter(i => defaultTeams.includes(i.owner));
+  if(session.team) return items.filter(i => i.owner === session.team);
   return items.filter(i => i.createdBy === session.username);
 }
 
@@ -1200,7 +1196,7 @@ function renderLogUserFilters(){
 
 function itemMatchesUserFilter(item, filterValue){
   if(filterValue === 'all') return true;
-  if(filterValue === 'mine') return defaultTeams.length ? defaultTeams.includes(item.owner) : item.createdBy === session.username;
+  if(filterValue === 'mine') return session.team ? item.owner === session.team : item.createdBy === session.username;
   return item.owner === filterValue;
 }
 
@@ -1294,7 +1290,7 @@ document.querySelectorAll('#checkinFilters .filter-chip').forEach(chip => {
 });
 
 function renderCheckinLocFilters(){
-  const distinctLocs = Array.from(new Set(items.map(i => i.location).filter(Boolean))).sort();
+  const distinctLocs = Array.from(new Set(teamScopedItems().map(i => i.location).filter(Boolean))).sort();
   $('checkinLocGroup').style.display = distinctLocs.length > 1 ? 'block' : 'none';
   if(distinctLocs.length <= 1) checkinLocationFilter = 'all';
   const el = $('checkinLocFilters');
@@ -1379,7 +1375,7 @@ function isQtyMismatch(i){
 $('exportCheckinBtn').addEventListener('click', async () => {
   showToast('Preparing Excel file...');
   const headers = ['Sticker','Name','Expected Qty','Received Qty','Status','Qty Flag','Condition','Checked At','Entered By','Photo'];
-  const rows = await Promise.all(items.map(async i => [
+  const rows = await Promise.all(teamScopedItems().map(async i => [
     i.sticker, i.name, i.qty,
     i.arrived ? (i.receivedQty ?? '') : '',
     i.arrived ? 'Received' : 'Pending to receive',
@@ -1394,21 +1390,22 @@ $('exportCheckinBtn').addEventListener('click', async () => {
 
 function renderCheckinStatus(){
   const el = $('checkinStatus');
-  if(items.length === 0){
+  const scoped = teamScopedItems();
+  if(scoped.length === 0){
     el.textContent = 'No items logged yet.';
     return;
   }
-  const arrivedCount = items.filter(i => i.arrived).length;
-  const damagedCount = items.filter(i => i.arrived && i.condition === 'damaged').length;
-  const mismatchCount = items.filter(isQtyMismatch).length;
-  let txt = `${items.length} items logged · ${arrivedCount} received`;
+  const arrivedCount = scoped.filter(i => i.arrived).length;
+  const damagedCount = scoped.filter(i => i.arrived && i.condition === 'damaged').length;
+  const mismatchCount = scoped.filter(isQtyMismatch).length;
+  let txt = `${scoped.length} items logged · ${arrivedCount} received`;
   if(damagedCount) txt += ` · ${damagedCount} damaged`;
   if(mismatchCount) txt += ` · ${mismatchCount} qty mismatch`;
   el.textContent = txt + '.';
 }
 
 function renderCheckinUserFilters(){
-  const distinctTeams = Array.from(new Set(items.map(i => i.owner).filter(Boolean)));
+  const distinctTeams = Array.from(new Set(teamScopedItems().map(i => i.owner).filter(Boolean)));
   $('checkinTeamGroup').style.display = distinctTeams.length > 1 ? 'block' : 'none';
   if(distinctTeams.length <= 1) checkinUserFilter = 'all';
   renderUserFilterChips($('checkinUserFilters'), checkinUserFilter, v => { checkinUserFilter = v; renderCheckinList(); });
@@ -1416,7 +1413,7 @@ function renderCheckinUserFilters(){
 
 function renderCheckinList(){
   const list = $('checkinList');
-  let filtered = items;
+  let filtered = teamScopedItems();
   if(checkinFilter === 'pending') filtered = filtered.filter(i => !i.arrived);
   else if(checkinFilter === 'received') filtered = filtered.filter(i => i.arrived);
   else if(checkinFilter === 'mismatch') filtered = filtered.filter(isQtyMismatch);
@@ -1461,7 +1458,7 @@ function renderCheckinMatches(query){
     checkinSelectedSticker = null;
     return;
   }
-  const matches = items.filter(i => i.sticker.includes(q) || i.name.toLowerCase().includes(q));
+  const matches = teamScopedItems().filter(i => i.sticker.includes(q) || i.name.toLowerCase().includes(q));
   if(matches.length === 0){
     matchesEl.style.display = '';
     matchesEl.innerHTML = `<div class="empty-state">No item found matching "${escHtml(query)}".</div>`;
@@ -1642,7 +1639,9 @@ async function renderUserList(){
       <div class="item">
         <div class="body">
           <div class="name">${escHtml(u.username)}${u.role === 'admin' ? ' (admin)' : ''}</div>
+          <div class="meta">${u.team ? escHtml(u.team) : 'No team'}</div>
         </div>
+        ${u.role !== 'admin' ? `<button class="edit-btn change-team-btn" data-username="${escHtml(u.username)}" data-team="${escHtml(u.team || '')}">Team</button>` : ''}
         ${u.role !== 'admin' ? `<button class="edit-btn del-user-btn" data-username="${escHtml(u.username)}">&times;</button>` : ''}
       </div>
     `).join('');
@@ -1650,6 +1649,18 @@ async function renderUserList(){
       btn.addEventListener('click', async () => {
         if(!confirm(`Remove user "${btn.dataset.username}"?`)) return;
         await apiFetch(`/api/users/${encodeURIComponent(btn.dataset.username)}`, { method: 'DELETE' });
+        renderUserList();
+      });
+    });
+    el.querySelectorAll('.change-team-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const next = prompt(`Team for "${btn.dataset.username}" (blank for none):`, btn.dataset.team);
+        if(next === null) return;
+        await apiFetch(`/api/users/${encodeURIComponent(btn.dataset.username)}`, {
+          method: 'PATCH',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ team: next.trim() })
+        });
         renderUserList();
       });
     });
@@ -1674,6 +1685,8 @@ function renderAdminTeamList(){
       renderAdminTeamList();
     });
   });
+  $('newUserTeam').innerHTML = '<option value="">No team</option>' +
+    teamList.map(t => `<option value="${escHtml(t)}">${escHtml(t)}</option>`).join('');
 }
 
 $('adminAddTeamBtn').addEventListener('click', async () => {
@@ -1722,9 +1735,36 @@ $('adminAddLocBtn').addEventListener('click', async () => {
   showToast(`Added "${name}"`);
 });
 
+$('createUserBtn').addEventListener('click', async () => {
+  const username = $('newUserUsername').value.trim();
+  const code = $('newUserCode').value.trim();
+  const team = $('newUserTeam').value;
+  $('createUserStatus').textContent = '';
+  if(!username || !/^\d{4}$/.test(code)){
+    $('createUserStatus').textContent = 'Enter a username and a 4-digit code.';
+    return;
+  }
+  try{
+    const res = await apiFetch('/api/users', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ username, code, team })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Could not create login');
+    $('newUserUsername').value = '';
+    $('newUserCode').value = '';
+    $('createUserStatus').textContent = `Created "${username}"${team ? ' (' + team + ')' : ''}.`;
+    showToast(`Created login "${username}"`);
+    renderUserList();
+  }catch(e){
+    $('createUserStatus').textContent = e.message || 'Could not create login.';
+  }
+});
+
 if(session && session.token){
   Promise.all([loadTeams(), loadLocationsList()]).then(() => {
-    if(defaultLocations.length === 0 || defaultTeams.length === 0) enterSetup();
+    if(defaultLocations.length === 0) enterSetup();
     showApp();
     loadData();
   });

@@ -16,7 +16,7 @@ async function getSession(request, env) {
   if (!token) return null;
   const row = await env.DB.prepare('SELECT username FROM sessions WHERE token = ?').bind(token).first();
   if (!row) return null;
-  const user = await env.DB.prepare('SELECT username, role FROM users WHERE username = ?').bind(row.username).first();
+  const user = await env.DB.prepare('SELECT username, role, team FROM users WHERE username = ?').bind(row.username).first();
   return user || null;
 }
 
@@ -50,7 +50,7 @@ async function login(request, env) {
   const code = (body.code || '').trim();
   if (!username || !/^\d{4}$/.test(code)) return jsonResponse({ error: 'enter a username and a 4-digit code' }, 400);
 
-  let user = await env.DB.prepare('SELECT username, salt, code_hash, role FROM users WHERE username = ?').bind(username).first();
+  let user = await env.DB.prepare('SELECT username, salt, code_hash, role, team FROM users WHERE username = ?').bind(username).first();
   if (!user) {
     const salt = crypto.randomUUID();
     const codeHash = await sha256Hex(salt + code);
@@ -60,7 +60,7 @@ async function login(request, env) {
     } catch (e) {
       return jsonResponse({ error: 'that username was just taken, try again' }, 409);
     }
-    user = { username, salt, code_hash: codeHash, role: 'user' };
+    user = { username, salt, code_hash: codeHash, role: 'user', team: null };
   } else {
     const hash = await sha256Hex(user.salt + code);
     if (hash !== user.code_hash) return jsonResponse({ error: 'wrong code for that username' }, 401);
@@ -69,7 +69,7 @@ async function login(request, env) {
   const token = crypto.randomUUID();
   await env.DB.prepare('INSERT INTO sessions (token, username, created_at) VALUES (?, ?, ?)')
     .bind(token, user.username, new Date().toISOString()).run();
-  return jsonResponse({ token, username: user.username, role: user.role });
+  return jsonResponse({ token, username: user.username, role: user.role, team: user.team || null });
 }
 
 async function logout(request, env) {
@@ -195,13 +195,41 @@ async function getPhoto(key, env) {
 }
 
 async function listUsers(env) {
-  const { results } = await env.DB.prepare('SELECT username, role, created_at FROM users ORDER BY username').all();
+  const { results } = await env.DB.prepare('SELECT username, role, team, created_at FROM users ORDER BY username').all();
   return jsonResponse(results);
 }
 
 async function deleteUser(username, env) {
   if (username === 'adminasif') return jsonResponse({ error: 'cannot delete the primary admin' }, 403);
   await env.DB.prepare('DELETE FROM users WHERE username = ?').bind(username).run();
+  return jsonResponse({ ok: true });
+}
+
+async function createTeamUser(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
+  const username = String(body?.username || '').trim();
+  const code = String(body?.code || '').trim();
+  const team = String(body?.team || '').trim();
+  if (!username || !/^\d{4}$/.test(code)) return jsonResponse({ error: 'enter a username and a 4-digit code' }, 400);
+  const salt = crypto.randomUUID();
+  const codeHash = await sha256Hex(salt + code);
+  try {
+    await env.DB.prepare('INSERT INTO users (username, salt, code_hash, role, team, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(username, salt, codeHash, 'user', team || null, new Date().toISOString()).run();
+  } catch (e) {
+    return jsonResponse({ error: 'that username is already taken' }, 409);
+  }
+  return jsonResponse({ ok: true }, 201);
+}
+
+async function setUserTeam(username, request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
+  const team = String(body?.team || '').trim();
+  const existing = await env.DB.prepare('SELECT username FROM users WHERE username = ?').bind(username).first();
+  if (!existing) return jsonResponse({ error: 'not found' }, 404);
+  await env.DB.prepare('UPDATE users SET team = ? WHERE username = ?').bind(team || null, username).run();
   return jsonResponse({ ok: true });
 }
 
@@ -277,10 +305,18 @@ export default {
         if (session.role !== 'admin') return jsonResponse({ error: 'forbidden' }, 403);
         return listUsers(env);
       }
+      if (path === '/api/users' && request.method === 'POST') {
+        if (session.role !== 'admin') return jsonResponse({ error: 'forbidden' }, 403);
+        return createTeamUser(request, env);
+      }
       m = path.match(/^\/api\/users\/([^/]+)$/);
       if (m && request.method === 'DELETE') {
         if (session.role !== 'admin') return jsonResponse({ error: 'forbidden' }, 403);
         return deleteUser(decodeURIComponent(m[1]), env);
+      }
+      if (m && request.method === 'PATCH') {
+        if (session.role !== 'admin') return jsonResponse({ error: 'forbidden' }, 403);
+        return setUserTeam(decodeURIComponent(m[1]), request, env);
       }
 
       if (path === '/api/teams/add' && request.method === 'POST') return addTeam(request, env);
