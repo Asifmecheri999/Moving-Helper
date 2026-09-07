@@ -300,6 +300,11 @@
         <div class="chip-group" id="itemLocGroup"></div>
       </div>
 
+      <div id="addTeamGroup" style="display:none;">
+        <label>Team</label>
+        <div class="chip-group" id="itemTeamGroup"></div>
+      </div>
+
       <label>Exact location if available (rack, cabinet, area name)</label>
       <input type="text" id="itemLocDetail" placeholder="e.g. Rack 3, Cabinet B">
       <div class="chip-group" id="locDetailChips" style="margin-top:8px;"></div>
@@ -408,10 +413,8 @@
       <input type="text" id="newUserUsername" placeholder="e.g. swarms">
       <label>4-digit code</label>
       <input type="text" id="newUserCode" inputmode="numeric" maxlength="4" placeholder="1234">
-      <label>Team</label>
-      <select id="newUserTeam">
-        <option value="">No team</option>
-      </select>
+      <label>Team(s) <span style="font-weight:400; color:#8a94a6;">(pick one or more)</span></label>
+      <div class="chip-group" id="newUserTeamGroup"></div>
       <button class="save-btn" id="createUserBtn" style="margin-top:14px;">Create login</button>
       <div id="createUserStatus" style="font-size:12px; color:#6b6a62; margin-top:10px;"></div>
     </div>
@@ -479,6 +482,7 @@ let checkinLocationFilter = 'all';
 let editingSticker = null;
 let defaultLocations = [];
 let itemLocationValue = '';
+let itemTeamValue = '';
 let defaultLocDetail = '';
 let offline = false;
 let teamList = [];
@@ -563,7 +567,7 @@ function showLoginScreen(){
 
 function updateHomeLabel(){
   const parts = [];
-  if(session.team) parts.push(session.team);
+  if(session.teams && session.teams.length) parts.push(session.teams.join(', '));
   if(defaultLocations.length) parts.push(defaultLocations.join(', '));
   $('homeTeamLocLabel').textContent = parts.join(' · ');
 }
@@ -698,7 +702,7 @@ let settingsLocPicker = null;
 
 function initSettingsPickers(){
   settingsLocPicker = makeMultiPicker('settings', 'Loc', () => locations, defaultLocations);
-  $('settingsTeamLabel').textContent = session.team || 'None — ask admin to assign one';
+  $('settingsTeamLabel').textContent = (session.teams && session.teams.length) ? session.teams.join(', ') : 'None — ask admin to assign one';
 }
 
 $('settingsSaveBtn').addEventListener('click', async () => {
@@ -731,7 +735,7 @@ async function submitAuth(){
     });
     const data = await res.json();
     if(!res.ok) throw new Error(data.error || 'Could not log in');
-    session = { token: data.token, username: data.username, role: data.role, team: data.team || null };
+    session = { token: data.token, username: data.username, role: data.role, teams: Array.isArray(data.teams) ? data.teams : [] };
     localStorage.setItem('tagger-session', JSON.stringify(session));
     loadUserDefaults();
     $('loginUsername').value = '';
@@ -865,6 +869,7 @@ async function loadData(){
   setNextStickerNum();
   $('itemLocDetail').value = defaultLocDetail;
   renderAddLocationChips();
+  renderAddTeamChips();
   renderLocDetailChips();
   renderList();
 }
@@ -885,6 +890,27 @@ function renderAddLocationChips(){
     c.addEventListener('click', () => {
       itemLocationValue = c.dataset.value;
       el.querySelectorAll('.chip').forEach(x => x.classList.toggle('on', x.dataset.value === itemLocationValue));
+    });
+  });
+}
+
+function renderAddTeamChips(){
+  const wrap = $('addTeamGroup');
+  const myTeams = (session && session.teams) || [];
+  if(myTeams.length <= 1){
+    wrap.style.display = 'none';
+    itemTeamValue = myTeams[0] || '';
+    return;
+  }
+  wrap.style.display = 'block';
+  if(!myTeams.includes(itemTeamValue)) itemTeamValue = myTeams[0];
+  const el = $('itemTeamGroup');
+  el.innerHTML = myTeams.map(t => `<button type="button" class="chip" data-value="${escHtml(t)}">${escHtml(t)}</button>`).join('');
+  el.querySelectorAll('.chip').forEach(c => {
+    c.classList.toggle('on', c.dataset.value === itemTeamValue);
+    c.addEventListener('click', () => {
+      itemTeamValue = c.dataset.value;
+      el.querySelectorAll('.chip').forEach(x => x.classList.toggle('on', x.dataset.value === itemTeamValue));
     });
   });
 }
@@ -1056,7 +1082,7 @@ $('saveBtn').addEventListener('click', async () => {
     resetForm();
     showView('list');
   } else {
-    const item = { sticker: stickerVal, ...fields, location: itemLocationValue, owner: session.team || '', photo: photoKey, ts: new Date().toISOString(), createdBy: session.username };
+    const item = { sticker: stickerVal, ...fields, location: itemLocationValue, owner: itemTeamValue, photo: photoKey, ts: new Date().toISOString(), createdBy: session.username };
     try{
       const res = await apiFetch('/api/items', {
         method: 'POST',
@@ -1118,6 +1144,7 @@ function startEdit(sticker){
   $('saveBtn').textContent = 'Update item';
   $('deleteItemBtn').style.display = canDelete(item) ? 'block' : 'none';
   $('addLocationGroup').style.display = 'none';
+  $('addTeamGroup').style.display = 'none';
   showView('add');
   renderLocDetailChips();
   checkSaveEnabled();
@@ -1137,6 +1164,7 @@ function resetForm(){
   $('saveBtn').textContent = 'Save item';
   $('deleteItemBtn').style.display = 'none';
   renderAddLocationChips();
+  renderAddTeamChips();
   renderLocDetailChips();
   checkSaveEnabled();
 }
@@ -1183,7 +1211,7 @@ function renderUserFilterChips(el, currentValue, onPick){
 
 function teamScopedItems(){
   if(session.role === 'admin') return items;
-  if(session.team) return items.filter(i => i.owner === session.team);
+  if(session.teams && session.teams.length) return items.filter(i => session.teams.includes(i.owner));
   return items.filter(i => i.createdBy === session.username);
 }
 
@@ -1196,7 +1224,7 @@ function renderLogUserFilters(){
 
 function itemMatchesUserFilter(item, filterValue){
   if(filterValue === 'all') return true;
-  if(filterValue === 'mine') return session.team ? item.owner === session.team : item.createdBy === session.username;
+  if(filterValue === 'mine') return (session.teams && session.teams.length) ? session.teams.includes(item.owner) : item.createdBy === session.username;
   return item.owner === filterValue;
 }
 
@@ -1639,9 +1667,9 @@ async function renderUserList(){
       <div class="item">
         <div class="body">
           <div class="name">${escHtml(u.username)}${u.role === 'admin' ? ' (admin)' : ''}</div>
-          <div class="meta">${u.team ? escHtml(u.team) : 'No team'}</div>
+          <div class="meta">${(u.teams && u.teams.length) ? escHtml(u.teams.join(', ')) : 'No team'}</div>
         </div>
-        ${u.role !== 'admin' ? `<button class="edit-btn change-team-btn" data-username="${escHtml(u.username)}" data-team="${escHtml(u.team || '')}">Team</button>` : ''}
+        ${u.role !== 'admin' ? `<button class="edit-btn change-team-btn" data-username="${escHtml(u.username)}" data-teams="${escHtml((u.teams || []).join(', '))}">Team</button>` : ''}
         ${u.role !== 'admin' ? `<button class="edit-btn del-user-btn" data-username="${escHtml(u.username)}">&times;</button>` : ''}
       </div>
     `).join('');
@@ -1654,12 +1682,13 @@ async function renderUserList(){
     });
     el.querySelectorAll('.change-team-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const next = prompt(`Team for "${btn.dataset.username}" (blank for none):`, btn.dataset.team);
+        const next = prompt(`Team(s) for "${btn.dataset.username}" — comma-separated, blank for none:`, btn.dataset.teams);
         if(next === null) return;
+        const teams = next.split(',').map(t => t.trim()).filter(Boolean);
         await apiFetch(`/api/users/${encodeURIComponent(btn.dataset.username)}`, {
           method: 'PATCH',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ team: next.trim() })
+          body: JSON.stringify({ teams })
         });
         renderUserList();
       });
@@ -1685,8 +1714,24 @@ function renderAdminTeamList(){
       renderAdminTeamList();
     });
   });
-  $('newUserTeam').innerHTML = '<option value="">No team</option>' +
-    teamList.map(t => `<option value="${escHtml(t)}">${escHtml(t)}</option>`).join('');
+  renderNewUserTeamChips();
+}
+
+let newUserSelectedTeams = new Set();
+
+function renderNewUserTeamChips(){
+  const el = $('newUserTeamGroup');
+  newUserSelectedTeams.forEach(t => { if(!teamList.includes(t)) newUserSelectedTeams.delete(t); });
+  el.innerHTML = teamList.map(t => `<button type="button" class="chip" data-value="${escHtml(t)}">${escHtml(t)}<span class="chip-x">&times;</span></button>`).join('') ||
+    `<div class="empty-state">Add a team above first.</div>`;
+  el.querySelectorAll('.chip').forEach(c => {
+    c.classList.toggle('on', newUserSelectedTeams.has(c.dataset.value));
+    c.addEventListener('click', () => {
+      if(newUserSelectedTeams.has(c.dataset.value)) newUserSelectedTeams.delete(c.dataset.value);
+      else newUserSelectedTeams.add(c.dataset.value);
+      renderNewUserTeamChips();
+    });
+  });
 }
 
 $('adminAddTeamBtn').addEventListener('click', async () => {
@@ -1738,7 +1783,7 @@ $('adminAddLocBtn').addEventListener('click', async () => {
 $('createUserBtn').addEventListener('click', async () => {
   const username = $('newUserUsername').value.trim();
   const code = $('newUserCode').value.trim();
-  const team = $('newUserTeam').value;
+  const teams = Array.from(newUserSelectedTeams);
   $('createUserStatus').textContent = '';
   if(!username || !/^\d{4}$/.test(code)){
     $('createUserStatus').textContent = 'Enter a username and a 4-digit code.';
@@ -1748,13 +1793,15 @@ $('createUserBtn').addEventListener('click', async () => {
     const res = await apiFetch('/api/users', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ username, code, team })
+      body: JSON.stringify({ username, code, teams })
     });
     const data = await res.json();
     if(!res.ok) throw new Error(data.error || 'Could not create login');
     $('newUserUsername').value = '';
     $('newUserCode').value = '';
-    $('createUserStatus').textContent = `Created "${username}"${team ? ' (' + team + ')' : ''}.`;
+    newUserSelectedTeams = new Set();
+    renderNewUserTeamChips();
+    $('createUserStatus').textContent = `Created "${username}"${teams.length ? ' (' + teams.join(', ') + ')' : ''}.`;
     showToast(`Created login "${username}"`);
     renderUserList();
   }catch(e){

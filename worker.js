@@ -10,12 +10,22 @@ async function sha256Hex(str) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+function parseTeams(raw) {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) {
+    return [];
+  }
+}
+
 async function getUserByUsername(username, env, cols) {
   try {
-    return await env.DB.prepare(`SELECT ${cols.join(', ')}, team FROM users WHERE username = ?`).bind(username).first();
+    return await env.DB.prepare(`SELECT ${cols.join(', ')}, teams FROM users WHERE username = ?`).bind(username).first();
   } catch (e) {
     const row = await env.DB.prepare(`SELECT ${cols.join(', ')} FROM users WHERE username = ?`).bind(username).first();
-    return row ? { ...row, team: null } : row;
+    return row ? { ...row, teams: null } : row;
   }
 }
 
@@ -26,7 +36,8 @@ async function getSession(request, env) {
   const row = await env.DB.prepare('SELECT username FROM sessions WHERE token = ?').bind(token).first();
   if (!row) return null;
   const user = await getUserByUsername(row.username, env, ['username', 'role']);
-  return user || null;
+  if (!user) return null;
+  return { ...user, teams: parseTeams(user.teams) };
 }
 
 function rowToItem(row) {
@@ -69,7 +80,7 @@ async function login(request, env) {
     } catch (e) {
       return jsonResponse({ error: 'that username was just taken, try again' }, 409);
     }
-    user = { username, salt, code_hash: codeHash, role: 'user', team: null };
+    user = { username, salt, code_hash: codeHash, role: 'user', teams: null };
   } else {
     const hash = await sha256Hex(user.salt + code);
     if (hash !== user.code_hash) return jsonResponse({ error: 'wrong code for that username' }, 401);
@@ -78,7 +89,7 @@ async function login(request, env) {
   const token = crypto.randomUUID();
   await env.DB.prepare('INSERT INTO sessions (token, username, created_at) VALUES (?, ?, ?)')
     .bind(token, user.username, new Date().toISOString()).run();
-  return jsonResponse({ token, username: user.username, role: user.role, team: user.team || null });
+  return jsonResponse({ token, username: user.username, role: user.role, teams: parseTeams(user.teams) });
 }
 
 async function logout(request, env) {
@@ -205,11 +216,11 @@ async function getPhoto(key, env) {
 
 async function listUsers(env) {
   try {
-    const { results } = await env.DB.prepare('SELECT username, role, team, created_at FROM users ORDER BY username').all();
-    return jsonResponse(results);
+    const { results } = await env.DB.prepare('SELECT username, role, teams, created_at FROM users ORDER BY username').all();
+    return jsonResponse(results.map(r => ({ ...r, teams: parseTeams(r.teams) })));
   } catch (e) {
     const { results } = await env.DB.prepare('SELECT username, role, created_at FROM users ORDER BY username').all();
-    return jsonResponse(results.map(r => ({ ...r, team: null })));
+    return jsonResponse(results.map(r => ({ ...r, teams: [] })));
   }
 }
 
@@ -219,31 +230,36 @@ async function deleteUser(username, env) {
   return jsonResponse({ ok: true });
 }
 
+function cleanTeamsInput(raw) {
+  if (!Array.isArray(raw)) return [];
+  return Array.from(new Set(raw.map(t => String(t || '').trim()).filter(Boolean)));
+}
+
 async function createTeamUser(request, env) {
   let body;
   try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
   const username = String(body?.username || '').trim();
   const code = String(body?.code || '').trim();
-  const team = String(body?.team || '').trim();
+  const teams = cleanTeamsInput(body?.teams);
   if (!username || !/^\d{4}$/.test(code)) return jsonResponse({ error: 'enter a username and a 4-digit code' }, 400);
   const salt = crypto.randomUUID();
   const codeHash = await sha256Hex(salt + code);
   try {
-    await env.DB.prepare('INSERT INTO users (username, salt, code_hash, role, team, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(username, salt, codeHash, 'user', team || null, new Date().toISOString()).run();
+    await env.DB.prepare('INSERT INTO users (username, salt, code_hash, role, teams, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(username, salt, codeHash, 'user', teams.length ? JSON.stringify(teams) : null, new Date().toISOString()).run();
   } catch (e) {
     return jsonResponse({ error: 'that username is already taken' }, 409);
   }
   return jsonResponse({ ok: true }, 201);
 }
 
-async function setUserTeam(username, request, env) {
+async function setUserTeams(username, request, env) {
   let body;
   try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
-  const team = String(body?.team || '').trim();
+  const teams = cleanTeamsInput(body?.teams);
   const existing = await env.DB.prepare('SELECT username FROM users WHERE username = ?').bind(username).first();
   if (!existing) return jsonResponse({ error: 'not found' }, 404);
-  await env.DB.prepare('UPDATE users SET team = ? WHERE username = ?').bind(team || null, username).run();
+  await env.DB.prepare('UPDATE users SET teams = ? WHERE username = ?').bind(teams.length ? JSON.stringify(teams) : null, username).run();
   return jsonResponse({ ok: true });
 }
 
@@ -330,7 +346,7 @@ export default {
       }
       if (m && request.method === 'PATCH') {
         if (session.role !== 'admin') return jsonResponse({ error: 'forbidden' }, 403);
-        return setUserTeam(decodeURIComponent(m[1]), request, env);
+        return setUserTeams(decodeURIComponent(m[1]), request, env);
       }
 
       if (path === '/api/teams/add' && request.method === 'POST') return addTeam(request, env);
