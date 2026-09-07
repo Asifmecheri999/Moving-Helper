@@ -327,7 +327,7 @@
   <div id="listView" style="display:none;">
     <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Home</a>
     <input type="text" id="logSearch" placeholder="Search by sticker number or name" style="margin-bottom:16px;">
-    <div class="filter-group">
+    <div class="filter-group" id="logLocGroup" style="display:none;">
       <div class="filter-label">Location</div>
       <div class="filters" id="logLocFilters"></div>
     </div>
@@ -369,11 +369,11 @@
         <div class="filter-chip" data-cfilter="mismatch">Mismatch</div>
       </div>
     </div>
-    <div class="filter-group">
+    <div class="filter-group" id="checkinLocGroup" style="display:none;">
       <div class="filter-label">Location</div>
       <div class="filters" id="checkinLocFilters"></div>
     </div>
-    <div class="filter-group">
+    <div class="filter-group" id="checkinTeamGroup" style="display:none;">
       <div class="filter-label">Team</div>
       <div class="filters" id="checkinUserFilters"></div>
     </div>
@@ -538,8 +538,8 @@ async function logout(){
 const VIEWS = ['home', 'add', 'list', 'checkin', 'admin', 'settings', 'setup'];
 function showView(name){
   VIEWS.forEach(v => { $(v + 'View').style.display = v === name ? 'block' : 'none'; });
-  if(name === 'list'){ renderLogUserFilters(); renderList(); }
-  else if(name === 'checkin'){ renderCheckinUserFilters(); renderCheckinStatus(); renderCheckinList(); }
+  if(name === 'list'){ renderLogLocFilters(); renderLogUserFilters(); renderList(); }
+  else if(name === 'checkin'){ renderCheckinLocFilters(); renderCheckinUserFilters(); renderCheckinStatus(); renderCheckinList(); }
   else if(name === 'admin'){ renderUserList(); renderAdminTeamList(); renderAdminLocList(); }
   else if(name === 'settings'){ initSettingsPickers(); }
 }
@@ -561,7 +561,8 @@ function makeLocationPicker(prefix, initialSelected){
 
   function render(){
     const el = groupEl();
-    el.innerHTML = locations.map(l => `<button type="button" class="chip" data-value="${escHtml(l)}">${escHtml(l)}</button>`).join('');
+    const displayList = Array.from(new Set([...locations, ...selected]));
+    el.innerHTML = displayList.map(l => `<button type="button" class="chip" data-value="${escHtml(l)}">${escHtml(l)}</button>`).join('');
     el.querySelectorAll('.chip').forEach(c => {
       c.classList.toggle('on', selected.has(c.dataset.value));
       c.addEventListener('click', () => {
@@ -600,7 +601,8 @@ function makeTeamPicker(prefix, initialSelected){
 
   function render(){
     const el = groupEl();
-    el.innerHTML = teamList.map(t => `<button type="button" class="chip" data-value="${escHtml(t)}">${escHtml(t)}</button>`).join('');
+    const displayList = Array.from(new Set(selected ? [...teamList, selected] : teamList));
+    el.innerHTML = displayList.map(t => `<button type="button" class="chip" data-value="${escHtml(t)}">${escHtml(t)}</button>`).join('');
     el.querySelectorAll('.chip').forEach(c => {
       c.classList.toggle('on', !creating && c.dataset.value === selected);
       c.addEventListener('click', () => {
@@ -1145,10 +1147,14 @@ function updateHeaderCount(){
 }
 
 function renderLogLocFilters(){
+  const scopedLocs = Array.from(new Set(teamScopedItems().map(i => i.location).filter(Boolean))).sort();
+  $('logLocGroup').style.display = scopedLocs.length > 1 ? 'block' : 'none';
+  if(scopedLocs.length <= 1) logLocationFilter = 'all';
   const el = $('logLocFilters');
-  el.innerHTML = '<div class="filter-chip active" data-locfilter="all">All locations</div>' +
-    locations.map(l => `<div class="filter-chip" data-locfilter="${escHtml(l)}">${escHtml(l)}</div>`).join('');
+  el.innerHTML = '<div class="filter-chip" data-locfilter="all">All locations</div>' +
+    scopedLocs.map(l => `<div class="filter-chip" data-locfilter="${escHtml(l)}">${escHtml(l)}</div>`).join('');
   el.querySelectorAll('.filter-chip').forEach(chip => {
+    chip.classList.toggle('active', chip.dataset.locfilter === logLocationFilter);
     chip.addEventListener('click', () => {
       el.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
       chip.classList.add('active');
@@ -1183,7 +1189,9 @@ function teamScopedItems(){
 }
 
 function renderLogUserFilters(){
-  $('logTeamGroup').style.display = session.role === 'admin' ? 'block' : 'none';
+  const scopedTeams = Array.from(new Set(teamScopedItems().map(i => i.owner).filter(Boolean)));
+  $('logTeamGroup').style.display = scopedTeams.length > 1 ? 'block' : 'none';
+  if(scopedTeams.length <= 1) logUserFilter = 'all';
   renderUserFilterChips($('logUserFilters'), logUserFilter, v => { logUserFilter = v; renderList(); });
 }
 
@@ -1283,9 +1291,12 @@ document.querySelectorAll('#checkinFilters .filter-chip').forEach(chip => {
 });
 
 function renderCheckinLocFilters(){
+  const distinctLocs = Array.from(new Set(items.map(i => i.location).filter(Boolean))).sort();
+  $('checkinLocGroup').style.display = distinctLocs.length > 1 ? 'block' : 'none';
+  if(distinctLocs.length <= 1) checkinLocationFilter = 'all';
   const el = $('checkinLocFilters');
-  el.innerHTML = '<div class="filter-chip active" data-locfilter="all">All locations</div>' +
-    locations.map(l => `<div class="filter-chip" data-locfilter="${escHtml(l)}">${escHtml(l)}</div>`).join('');
+  el.innerHTML = '<div class="filter-chip" data-locfilter="all">All locations</div>' +
+    distinctLocs.map(l => `<div class="filter-chip" data-locfilter="${escHtml(l)}">${escHtml(l)}</div>`).join('');
   el.querySelectorAll('.filter-chip').forEach(chip => {
     chip.classList.toggle('active', chip.dataset.locfilter === checkinLocationFilter);
     chip.addEventListener('click', () => {
@@ -1394,6 +1405,9 @@ function renderCheckinStatus(){
 }
 
 function renderCheckinUserFilters(){
+  const distinctTeams = Array.from(new Set(items.map(i => i.owner).filter(Boolean)));
+  $('checkinTeamGroup').style.display = distinctTeams.length > 1 ? 'block' : 'none';
+  if(distinctTeams.length <= 1) checkinUserFilter = 'all';
   renderUserFilterChips($('checkinUserFilters'), checkinUserFilter, v => { checkinUserFilter = v; renderCheckinList(); });
 }
 
