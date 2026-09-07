@@ -149,17 +149,6 @@
     width:100%; padding:13px; border:1px solid var(--red); border-radius:9px; background:var(--red-bg);
     color:var(--red); font-size:14.5px; font-weight:600; margin-top:10px;
   }
-  .default-tick{
-    font-size:11.5px; font-weight:600; color:#8a94a6; cursor:pointer; user-select:none;
-    padding:6px 2px; margin:-6px -2px;
-  }
-  .default-tick .box{
-    display:inline-block; width:13px; height:13px; border-radius:3px; border:1.5px solid var(--line);
-    background:var(--panel); vertical-align:middle; margin-right:3px; text-align:center; line-height:11px;
-    font-size:10px; color:#fff;
-  }
-  .default-tick.on{color:var(--blue-dark);}
-  .default-tick.on .box{background:var(--blue); border-color:var(--blue);}
   .empty-state{text-align:center; color:#8a8a80; font-size:13.5px; padding:40px 20px;}
   .filter-label{
     font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;
@@ -228,6 +217,10 @@
     <input type="text" id="loginUsername" autocomplete="username">
     <label>4-digit code</label>
     <input type="password" id="loginCode" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="&bull;&bull;&bull;&bull;">
+    <label>Location <span class="req">*</span></label>
+    <div class="chip-group" id="loginLocGroup"></div>
+    <label>Team name <span class="req">*</span></label>
+    <input type="text" id="loginTeamName" placeholder="Who's tagging today?">
     <button class="save-btn" id="loginBtn">Log in</button>
     <div id="loginError" class="form-error" style="display:none;"></div>
     <div style="font-size:11.5px; color:#8a94a6; text-align:center; margin-top:12px;">First time? Just type a username and a 4-digit code you'll remember — it's created automatically.</div>
@@ -302,10 +295,7 @@
         <button class="stepper" id="qtyPlus">+</button>
       </div>
 
-      <label>Current location <span class="req">*</span> <span class="default-tick" id="locDefaultTick"><span class="box"></span>make default</span></label>
-      <div class="chip-group" id="itemLocGroup"></div>
-
-      <label>Exact location <span class="req">*</span></label>
+      <label>Exact location if available (rack, cabinet, area name)</label>
       <input type="text" id="itemLocDetail" list="locDetailOptions" placeholder="e.g. Rack 3, Cabinet B">
       <datalist id="locDetailOptions"></datalist>
 
@@ -326,16 +316,6 @@
         <option>Tools Room</option>
         <option>Storage/Drone Repairs</option>
       </select>
-
-      <label>End user <span class="req">*</span> <span class="default-tick" id="ownerDefaultTick"><span class="box"></span>make default</span></label>
-      <input type="text" id="itemOwner" list="ownerOptions" placeholder="Who does this belong to?">
-      <datalist id="ownerOptions"></datalist>
-
-      <label>Item required or not required? <span class="req">*</span></label>
-      <div class="flag-row">
-        <button class="flag-btn green" id="flagGreen"><span class="dot"></span>Required</button>
-        <button class="flag-btn red" id="flagRed"><span class="dot"></span>Not required</button>
-      </div>
 
       <button class="save-btn" id="saveBtn" disabled>Save item</button>
       <button class="delete-btn" id="deleteItemBtn" style="display:none;">Delete item</button>
@@ -449,7 +429,6 @@
 let items = [];
 let locations = ['Masdar', 'Airport Warehouse', 'Kizad'];
 const A9_LOCATION = 'A9 Warehouse';
-let flag = null;
 let photoData = null;
 let currentFilter = 'all';
 let logSearchQuery = '';
@@ -461,7 +440,7 @@ let checkinSortDir = 'desc';
 let editingSticker = null;
 let defaultOwner = localStorage.getItem('tagger-defaultowner') || '';
 let defaultLocation = localStorage.getItem('tagger-defaultlocation') || '';
-let locationValue = '';
+let defaultLocDetail = localStorage.getItem('tagger-locdetail') || '';
 let offline = false;
 let catalog = [];
 
@@ -530,11 +509,30 @@ document.querySelectorAll('[data-back]').forEach(link => {
 });
 $('homeLogoutBtn').addEventListener('click', logout);
 
+function renderLoginLocChips(){
+  const el = $('loginLocGroup');
+  el.innerHTML = locations.map(l => `<button type="button" class="chip" data-value="${escHtml(l)}">${escHtml(l)}</button>`).join('');
+  let val = locations.includes(defaultLocation) ? defaultLocation : '';
+  function render(){ el.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.value === val)); }
+  el.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => { val = c.dataset.value; render(); }));
+  render();
+  return { get: () => val };
+}
+const loginLocChip = renderLoginLocChips();
+$('loginTeamName').value = defaultOwner;
+
 async function submitAuth(){
   const username = $('loginUsername').value.trim();
   const code = $('loginCode').value.trim();
+  const location = loginLocChip.get();
+  const teamName = $('loginTeamName').value.trim();
   $('loginError').style.display = 'none';
   if(!username || !code) return;
+  if(!location || !teamName){
+    $('loginError').textContent = 'Please pick a location and enter a team name.';
+    $('loginError').style.display = 'block';
+    return;
+  }
   try{
     const res = await fetch('/api/login', {
       method: 'POST',
@@ -545,6 +543,10 @@ async function submitAuth(){
     if(!res.ok) throw new Error(data.error || 'Could not log in');
     session = { token: data.token, username: data.username, role: data.role };
     localStorage.setItem('tagger-session', JSON.stringify(session));
+    defaultLocation = location;
+    localStorage.setItem('tagger-defaultlocation', defaultLocation);
+    defaultOwner = teamName;
+    localStorage.setItem('tagger-defaultowner', defaultOwner);
     $('loginUsername').value = '';
     $('loginCode').value = '';
     showApp();
@@ -640,41 +642,6 @@ function setupChipGroup(groupId, defaultValue){
 const typeChip = setupChipGroup('itemTypeGroup', 'Equipment');
 const packingChip = setupChipGroup('itemPackingGroup', 'In box');
 
-function renderLocationChips(){
-  const group = $('itemLocGroup');
-  if(!locations.includes(locationValue)){
-    locationValue = locations.includes(defaultLocation) ? defaultLocation : (locations[0] || '');
-  }
-  group.innerHTML = locations.map(l => `<button type="button" class="chip" data-value="${escHtml(l)}">${escHtml(l)}</button>`).join('');
-  group.querySelectorAll('.chip').forEach(c => {
-    c.classList.toggle('on', c.dataset.value === locationValue);
-    c.addEventListener('click', () => {
-      locationValue = c.dataset.value;
-      group.querySelectorAll('.chip').forEach(x => x.classList.toggle('on', x.dataset.value === locationValue));
-      updateLocDefaultTick();
-      checkSaveEnabled();
-    });
-  });
-  updateLocDefaultTick();
-}
-
-function setDefaultTick(el, isOn){
-  el.classList.toggle('on', isOn);
-  el.querySelector('.box').textContent = isOn ? '✓' : '';
-}
-
-function updateLocDefaultTick(){
-  setDefaultTick($('locDefaultTick'), !!locationValue && locationValue === defaultLocation);
-}
-
-$('locDefaultTick').addEventListener('click', () => {
-  if(!locationValue) return;
-  defaultLocation = (defaultLocation === locationValue) ? '' : locationValue;
-  localStorage.setItem('tagger-defaultlocation', defaultLocation);
-  updateLocDefaultTick();
-  showToast(defaultLocation ? `"${defaultLocation}" set as default location` : 'Default location cleared');
-});
-
 async function loadData(){
   try{
     const rawLoc = localStorage.getItem('tagger-locations');
@@ -705,15 +672,12 @@ async function loadData(){
   }
 
   await saveItems();
-  renderLocationChips();
   renderLogLocFilters();
   renderLogUserFilters();
   renderCheckinLocFilters();
   renderCheckinUserFilters();
   setNextStickerNum();
-  $('itemOwner').value = defaultOwner;
-  updateOwnerDefaultTick();
-  updateOwnerOptions();
+  $('itemLocDetail').value = defaultLocDetail;
   updateLocDetailOptions();
   renderList();
 
@@ -728,29 +692,10 @@ function updateCatalogOptions(){
   $('catalogOptions').innerHTML = catalog.map(c => `<option value="${escHtml(c.name)}"></option>`).join('');
 }
 
-function updateOwnerDefaultTick(){
-  const val = $('itemOwner').value.trim();
-  setDefaultTick($('ownerDefaultTick'), !!val && val === defaultOwner);
-}
-
-function updateOwnerOptions(){
-  const names = Array.from(new Set(items.map(i => i.owner).filter(Boolean))).sort();
-  $('ownerOptions').innerHTML = names.map(n => `<option value="${n}"></option>`).join('');
-}
-
 function updateLocDetailOptions(){
   const details = Array.from(new Set(items.map(i => i.locationDetail).filter(Boolean))).sort();
   $('locDetailOptions').innerHTML = details.map(d => `<option value="${escHtml(d)}"></option>`).join('');
 }
-
-$('ownerDefaultTick').addEventListener('click', () => {
-  const val = $('itemOwner').value.trim();
-  if(!val) return;
-  defaultOwner = (defaultOwner === val) ? '' : val;
-  localStorage.setItem('tagger-defaultowner', defaultOwner);
-  updateOwnerDefaultTick();
-  showToast(defaultOwner ? `"${defaultOwner}" set as default` : 'Default cleared');
-});
 
 async function saveItems(){
   try{
@@ -827,28 +772,15 @@ $('qtyPlus').addEventListener('click', () => {
   el.value = parseInt(el.value || 0) + 1;
 });
 
-function setFlag(f){
-  flag = f;
-  $('flagGreen').classList.toggle('on', f === 'green');
-  $('flagRed').classList.toggle('on', f === 'red');
-  checkSaveEnabled();
-}
-$('flagGreen').addEventListener('click', () => setFlag('green'));
-$('flagRed').addEventListener('click', () => setFlag('red'));
-
 function checkSaveEnabled(){
   const name = $('itemName').value.trim();
-  const owner = $('itemOwner').value.trim();
-  const locDetail = $('itemLocDetail').value.trim();
-  $('saveBtn').disabled = !(name && owner && flag && locDetail);
+  $('saveBtn').disabled = !name;
 }
 $('itemName').addEventListener('input', () => {
   checkSaveEnabled();
   const match = catalog.find(c => c.name.toLowerCase() === $('itemName').value.trim().toLowerCase());
   if(match) $('itemQty').value = match.qty;
 });
-$('itemLocDetail').addEventListener('input', checkSaveEnabled);
-$('itemOwner').addEventListener('input', () => { checkSaveEnabled(); updateOwnerDefaultTick(); });
 
 function showToast(msg){
   const t = $('toast');
@@ -868,18 +800,20 @@ $('saveBtn').addEventListener('click', async () => {
     return;
   }
   $('saveBtn').disabled = true;
+  const locationDetail = $('itemLocDetail').value.trim();
+  if(locationDetail){
+    defaultLocDetail = locationDetail;
+    localStorage.setItem('tagger-locdetail', defaultLocDetail);
+  }
   const fields = {
     sticker: stickerVal,
     name: $('itemName').value.trim(),
     type: typeChip.get(),
     packing: packingChip.get(),
     qty: parseInt($('itemQty').value || 0),
-    location: locationValue,
-    locationDetail: $('itemLocDetail').value.trim(),
+    locationDetail,
     destination: A9_LOCATION,
-    destinationDetail: $('itemDestDetail').value,
-    owner: $('itemOwner').value.trim(),
-    flag: flag
+    destinationDetail: $('itemDestDetail').value
   };
 
   let photoKey = photoData;
@@ -916,7 +850,7 @@ $('saveBtn').addEventListener('click', async () => {
     resetForm();
     showView('list');
   } else {
-    const item = { sticker: stickerVal, ...fields, photo: photoKey, ts: new Date().toISOString(), createdBy: session.username };
+    const item = { sticker: stickerVal, ...fields, location: defaultLocation, owner: defaultOwner, photo: photoKey, ts: new Date().toISOString(), createdBy: session.username };
     try{
       const res = await apiFetch('/api/items', {
         method: 'POST',
@@ -938,7 +872,6 @@ $('saveBtn').addEventListener('click', async () => {
     await saveItems();
     resetForm();
   }
-  updateOwnerOptions();
   updateLocDetailOptions();
   renderList();
   updateHeaderCount();
@@ -971,19 +904,15 @@ function startEdit(sticker){
   typeChip.set(item.type || 'Equipment');
   packingChip.set(item.packing || 'In box');
   $('itemQty').value = item.qty;
-  locationValue = item.location;
-  renderLocationChips();
   $('itemLocDetail').value = item.locationDetail || '';
   $('itemDestDetail').value = item.destinationDetail || '';
-  $('itemOwner').value = item.owner || '';
   setPhotoBox(item.photo || null);
   $('editBanner').style.display = 'flex';
   $('editBannerNum').textContent = item.sticker;
   $('saveBtn').textContent = 'Update item';
   $('deleteItemBtn').style.display = 'block';
-  updateOwnerDefaultTick();
-  setFlag(item.flag || null);
   showView('add');
+  checkSaveEnabled();
 }
 
 function resetForm(){
@@ -992,20 +921,13 @@ function resetForm(){
   $('itemQty').value = 1;
   typeChip.set('Equipment');
   packingChip.set('In box');
-  locationValue = defaultLocation || locations[0] || '';
-  renderLocationChips();
-  $('itemLocDetail').value = '';
+  $('itemLocDetail').value = defaultLocDetail;
   $('itemDestDetail').value = '';
-  $('itemOwner').value = defaultOwner;
   setPhotoBox(null);
-  setFlag(null);
-  $('flagGreen').classList.remove('on');
-  $('flagRed').classList.remove('on');
   setNextStickerNum();
   $('editBanner').style.display = 'none';
   $('saveBtn').textContent = 'Save item';
   $('deleteItemBtn').style.display = 'none';
-  updateOwnerDefaultTick();
   checkSaveEnabled();
 }
 
@@ -1074,7 +996,7 @@ function renderList(){
       <div class="body">
         <div class="top">
           <span class="num">#${i.sticker}</span>
-          <span class="dot" style="background:${i.flag==='green' ? 'var(--green)' : 'var(--red)'}"></span>
+          ${i.flag ? `<span class="dot" style="background:${i.flag==='green' ? 'var(--green)' : 'var(--red)'}"></span>` : ''}
           ${i._dirty ? `<span class="badge">Not synced</span>` : ''}
         </div>
         <div class="name">${i.name}</div>
@@ -1189,10 +1111,10 @@ async function downloadStyledExcel(filename, headers, rows, textCols = [], photo
 
 $('exportBtn').addEventListener('click', async () => {
   showToast('Preparing Excel file...');
-  const headers = ['Sticker','Name','Type','Packing','Qty','Current location','Exact Location','Location at A9','End User','Requirement','Entered By','Timestamp','Photo'];
+  const headers = ['Sticker','Name','Type','Packing','Qty','Current location','Exact Location','Location at A9','Team','Requirement','Entered By','Timestamp','Photo'];
   const rows = await Promise.all(items.map(async i => [
     i.sticker, i.name, i.type, i.packing || '', i.qty, i.location, i.locationDetail || '',
-    i.destinationDetail || '', i.owner || '', i.flag === 'green' ? 'Required' : 'Not required', i.createdBy || '', i.ts,
+    i.destinationDetail || '', i.owner || '', i.flag === 'green' ? 'Required' : (i.flag === 'red' ? 'Not required' : ''), i.createdBy || '', i.ts,
     await toBase64DataUrl(i.photo)
   ]));
   downloadStyledExcel('item-tags.xlsx', headers, rows, [0], headers.length - 1);
@@ -1345,7 +1267,7 @@ function renderCheckinResult(sticker, showBack){
       <div class="body">
         <div class="top">
           <span class="num">#${match.sticker}</span>
-          <span class="dot" style="background:${match.flag==='green' ? 'var(--green)' : 'var(--red)'}"></span>
+          ${match.flag ? `<span class="dot" style="background:${match.flag==='green' ? 'var(--green)' : 'var(--red)'}"></span>` : ''}
           <span class="badge ${alreadyChecked ? 'received' : ''}">${alreadyChecked ? 'Received' : 'Pending to receive'}</span>
           ${isQtyMismatch(match) ? `<span class="badge mismatch">Qty mismatch</span>` : ''}
         </div>
