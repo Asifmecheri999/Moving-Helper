@@ -203,9 +203,10 @@
   .home-user-card .label{font-size:12.5px; color:#8a8a80;}
   .home-user-card .name{font-size:19px; font-weight:700; margin-top:3px; color:var(--blue-dark);}
   .back-link{
-    display:inline-block; color:var(--blue-dark); font-weight:600; text-decoration:none;
+    display:inline-flex; align-items:center; gap:6px; color:var(--blue-dark); font-weight:600; text-decoration:none;
     font-size:14px; margin-bottom:16px; padding:4px 0;
   }
+  .back-link svg{display:block; flex-shrink:0;}
 </style>
 </head>
 <body>
@@ -250,7 +251,7 @@
   </div>
 
   <div id="addView" style="display:none;">
-    <a href="#" class="back-link" data-back>&larr; Home</a>
+    <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Home</a>
     <div class="card">
       <div class="edit-banner" id="editBanner" style="display:none;">
         <span>Editing #<span id="editBannerNum"></span></span>
@@ -296,8 +297,8 @@
       </div>
 
       <label>Exact location if available (rack, cabinet, area name)</label>
-      <input type="text" id="itemLocDetail" list="locDetailOptions" placeholder="e.g. Rack 3, Cabinet B">
-      <datalist id="locDetailOptions"></datalist>
+      <input type="text" id="itemLocDetail" placeholder="e.g. Rack 3, Cabinet B">
+      <div class="chip-group" id="locDetailChips" style="margin-top:8px;"></div>
 
       <label>Location at A9 (leave blank if unknown)</label>
       <select id="itemDestDetail">
@@ -323,7 +324,7 @@
   </div>
 
   <div id="listView" style="display:none;">
-    <a href="#" class="back-link" data-back>&larr; Home</a>
+    <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Home</a>
     <input type="text" id="logSearch" placeholder="Search by sticker number or name" style="margin-bottom:16px;">
     <div class="filter-group">
       <div class="filter-label">Status</div>
@@ -346,7 +347,7 @@
   </div>
 
   <div id="checkinView" style="display:none;">
-    <a href="#" class="back-link" data-back>&larr; Home</a>
+    <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Home</a>
     <button class="export-btn" id="exportCheckinBtn">Export receiving list (Excel)</button>
 
     <div class="card">
@@ -388,7 +389,7 @@
   </div>
 
   <div id="adminView" style="display:none;">
-    <a href="#" class="back-link" data-back>&larr; Home</a>
+    <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Home</a>
     <div class="card" style="font-size:12.5px; color:#6b6a62;">
       Anyone gets an account automatically the first time they log in with a new username. Remove a user below if needed.
     </div>
@@ -396,7 +397,7 @@
   </div>
 
   <div id="csvView" style="display:none;">
-    <a href="#" class="back-link" data-back>&larr; Home</a>
+    <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Home</a>
     <div class="card">
       <label style="font-size:17px; font-weight:700; color:var(--ink);">Upload</label>
       <div style="font-size:12.5px; color:#6b6a62; margin-bottom:6px;">
@@ -678,7 +679,7 @@ async function loadData(){
   renderCheckinUserFilters();
   setNextStickerNum();
   $('itemLocDetail').value = defaultLocDetail;
-  updateLocDetailOptions();
+  renderLocDetailChips();
   renderList();
 
   try{
@@ -692,9 +693,24 @@ function updateCatalogOptions(){
   $('catalogOptions').innerHTML = catalog.map(c => `<option value="${escHtml(c.name)}"></option>`).join('');
 }
 
-function updateLocDetailOptions(){
-  const details = Array.from(new Set(items.map(i => i.locationDetail).filter(Boolean))).sort();
-  $('locDetailOptions').innerHTML = details.map(d => `<option value="${escHtml(d)}"></option>`).join('');
+function renderLocDetailChips(){
+  const el = $('locDetailChips');
+  const seen = new Set();
+  const recent = [];
+  for(const i of items){
+    const d = (i.locationDetail || '').trim();
+    if(d && !seen.has(d)){ seen.add(d); recent.push(d); }
+    if(recent.length >= 10) break;
+  }
+  const current = $('itemLocDetail').value.trim();
+  el.innerHTML = recent.map(d => `<button type="button" class="chip" data-value="${escHtml(d)}">${escHtml(d)}</button>`).join('');
+  el.querySelectorAll('.chip').forEach(c => {
+    c.classList.toggle('on', c.dataset.value === current);
+    c.addEventListener('click', () => {
+      $('itemLocDetail').value = c.dataset.value;
+      renderLocDetailChips();
+    });
+  });
 }
 
 async function saveItems(){
@@ -781,6 +797,7 @@ $('itemName').addEventListener('input', () => {
   const match = catalog.find(c => c.name.toLowerCase() === $('itemName').value.trim().toLowerCase());
   if(match) $('itemQty').value = match.qty;
 });
+$('itemLocDetail').addEventListener('input', renderLocDetailChips);
 
 function showToast(msg){
   const t = $('toast');
@@ -872,7 +889,7 @@ $('saveBtn').addEventListener('click', async () => {
     await saveItems();
     resetForm();
   }
-  updateLocDetailOptions();
+  renderLocDetailChips();
   renderList();
   updateHeaderCount();
 });
@@ -912,6 +929,7 @@ function startEdit(sticker){
   $('saveBtn').textContent = 'Update item';
   $('deleteItemBtn').style.display = 'block';
   showView('add');
+  renderLocDetailChips();
   checkSaveEnabled();
 }
 
@@ -928,6 +946,7 @@ function resetForm(){
   $('editBanner').style.display = 'none';
   $('saveBtn').textContent = 'Save item';
   $('deleteItemBtn').style.display = 'none';
+  renderLocDetailChips();
   checkSaveEnabled();
 }
 
@@ -1261,7 +1280,7 @@ function renderCheckinResult(sticker, showBack){
   const defaultCondition = match.condition || 'good';
 
   box.innerHTML = `
-    ${showBack ? `<a href="#" class="back-link" id="checkinBackLink" style="margin-bottom:10px; display:inline-block;">&larr; Back to results</a>` : ''}
+    ${showBack ? `<a href="#" class="back-link" id="checkinBackLink" style="margin-bottom:10px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Back to results</a>` : ''}
     <div class="item" style="margin-bottom:0;">
       ${match.photo ? `<img class="thumb" src="${photoSrc(match.photo)}" data-lightbox="${escHtml(photoSrc(match.photo))}">` : `<div class="thumb empty">no photo</div>`}
       <div class="body">
