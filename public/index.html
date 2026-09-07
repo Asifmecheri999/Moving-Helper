@@ -221,8 +221,9 @@
     <input type="password" id="loginCode" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="&bull;&bull;&bull;&bull;">
     <label>Location <span class="req">*</span> <span style="font-weight:400; color:#8a94a6;">(pick one or more)</span></label>
     <div class="chip-group" id="loginLocGroup"></div>
-    <label>Team <span class="req" id="teamReqMark" style="display:none;">*</span></label>
+    <label>Team <span class="req">*</span></label>
     <div class="chip-group" id="loginTeamGroup"></div>
+    <input type="text" id="newTeamInput" placeholder="Type your team name" style="display:none; margin-top:8px;">
     <button class="save-btn" id="loginBtn">Log in</button>
     <div id="loginError" class="form-error" style="display:none;"></div>
     <div style="font-size:11.5px; color:#8a94a6; text-align:center; margin-top:12px;">First time? Just type a username and a 4-digit code you'll remember — it's created automatically.</div>
@@ -336,7 +337,7 @@
       <div class="filter-label">Location</div>
       <div class="filters" id="logLocFilters"></div>
     </div>
-    <div class="filter-group">
+    <div class="filter-group" id="logTeamGroup" style="display:none;">
       <div class="filter-label">Team</div>
       <div class="filters" id="logUserFilters"></div>
     </div>
@@ -378,7 +379,7 @@
       <div class="filter-label">Location</div>
       <div class="filters" id="checkinLocFilters"></div>
     </div>
-    <div class="filter-group" id="checkinTeamGroup" style="display:none;">
+    <div class="filter-group">
       <div class="filter-label">Team</div>
       <div class="filters" id="checkinUserFilters"></div>
     </div>
@@ -545,21 +546,31 @@ function renderLoginLocChips(){
 renderLoginLocChips();
 
 let loginSelectedTeam = teamList.includes(defaultOwner) ? defaultOwner : '';
+let loginCreatingTeam = false;
+
+function currentLoginTeam(){
+  return loginCreatingTeam ? $('newTeamInput').value.trim() : loginSelectedTeam;
+}
 
 function renderLoginTeamChips(){
   const el = $('loginTeamGroup');
-  $('teamReqMark').style.display = teamList.length ? '' : 'none';
-  if(!teamList.length){
-    el.innerHTML = `<div style="font-size:12.5px; color:#8a94a6;">No teams set up yet — ask your admin to upload a team list.</div>`;
-    return;
-  }
-  el.innerHTML = teamList.map(t => `<button type="button" class="chip" data-value="${escHtml(t)}">${escHtml(t)}</button>`).join('');
-  function render(){ el.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.value === loginSelectedTeam)); }
-  el.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
-    loginSelectedTeam = (loginSelectedTeam === c.dataset.value) ? '' : c.dataset.value;
-    render();
-  }));
-  render();
+  el.innerHTML = teamList.map(t => `<button type="button" class="chip" data-value="${escHtml(t)}">${escHtml(t)}</button>`).join('') +
+    `<button type="button" class="chip" id="newTeamChip">+ My team isn't listed</button>`;
+  el.querySelectorAll('.chip[data-value]').forEach(c => {
+    c.classList.toggle('on', !loginCreatingTeam && c.dataset.value === loginSelectedTeam);
+    c.addEventListener('click', () => {
+      loginCreatingTeam = false;
+      loginSelectedTeam = (loginSelectedTeam === c.dataset.value) ? '' : c.dataset.value;
+      renderLoginTeamChips();
+    });
+  });
+  $('newTeamChip').classList.toggle('on', loginCreatingTeam);
+  $('newTeamChip').addEventListener('click', () => {
+    loginCreatingTeam = !loginCreatingTeam;
+    renderLoginTeamChips();
+    if(loginCreatingTeam) $('newTeamInput').focus();
+  });
+  $('newTeamInput').style.display = loginCreatingTeam ? 'block' : 'none';
 }
 
 async function loadTeams(){
@@ -576,7 +587,7 @@ async function submitAuth(){
   const username = $('loginUsername').value.trim();
   const code = $('loginCode').value.trim();
   const selectedLocations = Array.from(loginSelectedLocations);
-  const teamName = loginSelectedTeam;
+  const teamName = currentLoginTeam();
   $('loginError').style.display = 'none';
   if(!username || !code) return;
   if(selectedLocations.length === 0){
@@ -584,8 +595,8 @@ async function submitAuth(){
     $('loginError').style.display = 'block';
     return;
   }
-  if(teamList.length > 0 && !teamName){
-    $('loginError').textContent = 'Please pick a team.';
+  if(!teamName){
+    $('loginError').textContent = 'Please pick or create a team.';
     $('loginError').style.display = 'block';
     return;
   }
@@ -603,6 +614,16 @@ async function submitAuth(){
     localStorage.setItem('tagger-defaultlocations', JSON.stringify(defaultLocations));
     defaultOwner = teamName;
     localStorage.setItem('tagger-defaultowner', defaultOwner);
+    if(loginCreatingTeam && !teamList.includes(teamName)){
+      try{
+        await apiFetch('/api/teams/add', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ name: teamName })
+        });
+        teamList.push(teamName);
+      }catch(e){}
+    }
     $('loginUsername').value = '';
     $('loginCode').value = '';
     showApp();
@@ -1029,7 +1050,7 @@ function resetForm(){
 }
 
 function updateHeaderCount(){
-  $('headerCount').textContent = `${items.length} logged${offline ? ' · offline' : ''}`;
+  $('headerCount').textContent = `${teamScopedItems().length} logged${offline ? ' · offline' : ''}`;
 }
 
 function renderLogLocFilters(){
@@ -1064,7 +1085,14 @@ function renderUserFilterChips(el, currentValue, onPick){
   });
 }
 
+function teamScopedItems(){
+  if(session.role === 'admin') return items;
+  if(defaultOwner) return items.filter(i => i.owner === defaultOwner);
+  return items.filter(i => i.createdBy === session.username);
+}
+
 function renderLogUserFilters(){
+  $('logTeamGroup').style.display = session.role === 'admin' ? 'block' : 'none';
   renderUserFilterChips($('logUserFilters'), logUserFilter, v => { logUserFilter = v; renderList(); });
 }
 
@@ -1083,7 +1111,7 @@ function renderList(){
   updateHeaderCount();
   const list = $('itemList');
   const q = logSearchQuery.trim().toLowerCase();
-  let filtered = items;
+  let filtered = teamScopedItems();
   if(logLocationFilter !== 'all') filtered = filtered.filter(i => i.location === logLocationFilter);
   filtered = filtered.filter(i => itemMatchesUserFilter(i, logUserFilter));
   if(q) filtered = filtered.filter(i => i.sticker.includes(q) || i.name.toLowerCase().includes(q));
@@ -1231,7 +1259,7 @@ async function downloadStyledExcel(filename, headers, rows, textCols = [], photo
 $('exportBtn').addEventListener('click', async () => {
   showToast('Preparing Excel file...');
   const headers = ['Sticker','Name','Type','Packing','Qty','Current location','Exact Location','Location at A9','Team','Requirement','Entered By','Timestamp','Photo'];
-  const rows = await Promise.all(items.map(async i => [
+  const rows = await Promise.all(teamScopedItems().map(async i => [
     i.sticker, i.name, i.type, i.packing || '', i.qty, i.location, i.locationDetail || '',
     i.destinationDetail || '', i.owner || '', i.flag === 'green' ? 'Required' : (i.flag === 'red' ? 'Not required' : ''), i.createdBy || '', i.ts,
     await toBase64DataUrl(i.photo)
@@ -1243,16 +1271,10 @@ function isQtyMismatch(i){
   return i.arrived && i.receivedQty !== undefined && String(i.receivedQty) !== String(i.qty);
 }
 
-function checkinScopedItems(){
-  if(session.role === 'admin') return items;
-  if(defaultOwner) return items.filter(i => i.owner === defaultOwner);
-  return items.filter(i => i.createdBy === session.username);
-}
-
 $('exportCheckinBtn').addEventListener('click', async () => {
   showToast('Preparing Excel file...');
   const headers = ['Sticker','Name','Expected Qty','Received Qty','Status','Qty Flag','Condition','Checked At','Entered By','Photo'];
-  const rows = await Promise.all(checkinScopedItems().map(async i => [
+  const rows = await Promise.all(items.map(async i => [
     i.sticker, i.name, i.qty,
     i.arrived ? (i.receivedQty ?? '') : '',
     i.arrived ? 'Received' : 'Pending to receive',
@@ -1267,28 +1289,26 @@ $('exportCheckinBtn').addEventListener('click', async () => {
 
 function renderCheckinStatus(){
   const el = $('checkinStatus');
-  const scoped = checkinScopedItems();
-  if(scoped.length === 0){
+  if(items.length === 0){
     el.textContent = 'No items logged yet.';
     return;
   }
-  const arrivedCount = scoped.filter(i => i.arrived).length;
-  const damagedCount = scoped.filter(i => i.arrived && i.condition === 'damaged').length;
-  const mismatchCount = scoped.filter(isQtyMismatch).length;
-  let txt = `${scoped.length} items logged · ${arrivedCount} received`;
+  const arrivedCount = items.filter(i => i.arrived).length;
+  const damagedCount = items.filter(i => i.arrived && i.condition === 'damaged').length;
+  const mismatchCount = items.filter(isQtyMismatch).length;
+  let txt = `${items.length} items logged · ${arrivedCount} received`;
   if(damagedCount) txt += ` · ${damagedCount} damaged`;
   if(mismatchCount) txt += ` · ${mismatchCount} qty mismatch`;
   el.textContent = txt + '.';
 }
 
 function renderCheckinUserFilters(){
-  $('checkinTeamGroup').style.display = session.role === 'admin' ? 'block' : 'none';
   renderUserFilterChips($('checkinUserFilters'), checkinUserFilter, v => { checkinUserFilter = v; renderCheckinList(); });
 }
 
 function renderCheckinList(){
   const list = $('checkinList');
-  let filtered = checkinScopedItems();
+  let filtered = items;
   if(checkinFilter === 'pending') filtered = filtered.filter(i => !i.arrived);
   else if(checkinFilter === 'received') filtered = filtered.filter(i => i.arrived);
   else if(checkinFilter === 'mismatch') filtered = filtered.filter(isQtyMismatch);
@@ -1333,7 +1353,7 @@ function renderCheckinMatches(query){
     checkinSelectedSticker = null;
     return;
   }
-  const matches = checkinScopedItems().filter(i => i.sticker.includes(q) || i.name.toLowerCase().includes(q));
+  const matches = items.filter(i => i.sticker.includes(q) || i.name.toLowerCase().includes(q));
   if(matches.length === 0){
     matchesEl.style.display = '';
     matchesEl.innerHTML = `<div class="empty-state">No item found matching "${escHtml(query)}".</div>`;

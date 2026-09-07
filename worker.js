@@ -278,6 +278,15 @@ async function replaceTeams(request, env) {
   return jsonResponse({ ok: true, count: names.length });
 }
 
+async function addTeam(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
+  const name = String(body?.name || '').trim();
+  if (!name) return jsonResponse({ error: 'team name required' }, 400);
+  await env.DB.prepare('INSERT OR IGNORE INTO teams (name) VALUES (?)').bind(name).run();
+  return jsonResponse({ ok: true });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -331,6 +340,7 @@ export default {
         if (session.role !== 'admin') return jsonResponse({ error: 'forbidden' }, 403);
         return replaceTeams(request, env);
       }
+      if (path === '/api/teams/add' && request.method === 'POST') return addTeam(request, env);
 
       return jsonResponse({ error: 'not found' }, 404);
     }
