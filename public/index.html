@@ -116,6 +116,7 @@
     display:flex; gap:12px; background:var(--panel); border:1px solid var(--line);
     border-radius:10px; padding:12px; margin-bottom:10px; align-items:center;
   }
+  .item .select-check{width:20px; height:20px; flex-shrink:0; accent-color:var(--blue);}
   .item .thumb{
     width:56px; height:56px; border-radius:8px; object-fit:cover; background:var(--paper);
     flex-shrink:0; border:1px solid var(--line);
@@ -327,14 +328,6 @@
     <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Home</a>
     <input type="text" id="logSearch" placeholder="Search by sticker number or name" style="margin-bottom:16px;">
     <div class="filter-group">
-      <div class="filter-label">Status</div>
-      <div class="filters" id="filters">
-        <div class="filter-chip active" data-filter="all">All</div>
-        <div class="filter-chip" data-filter="green">Required</div>
-        <div class="filter-chip" data-filter="red">Not required</div>
-      </div>
-    </div>
-    <div class="filter-group">
       <div class="filter-label">Location</div>
       <div class="filters" id="logLocFilters"></div>
     </div>
@@ -342,7 +335,13 @@
       <div class="filter-label">Team</div>
       <div class="filters" id="logUserFilters"></div>
     </div>
-    <button class="export-btn" id="exportBtn">Export Excel</button>
+    <div style="display:flex; gap:10px;">
+      <button class="export-btn" id="exportBtn" style="flex:1;">Export Excel</button>
+      <button class="export-btn" id="selectModeBtn" style="flex:1;">Select</button>
+    </div>
+    <div id="bulkActionBar" style="display:none; margin-bottom:12px;">
+      <button class="delete-btn" id="bulkDeleteBtn" style="margin-top:0;" disabled>Delete selected (0)</button>
+    </div>
     <div id="itemList"></div>
   </div>
 
@@ -431,10 +430,11 @@ let items = [];
 let locations = ['Masdar', 'Airport Warehouse', 'Kizad'];
 const A9_LOCATION = 'A9 Warehouse';
 let photoData = null;
-let currentFilter = 'all';
 let logSearchQuery = '';
 let logLocationFilter = 'all';
 let logUserFilter = 'all';
+let selectMode = false;
+let selectedStickers = new Set();
 let checkinUserFilter = 'all';
 let checkinLocationFilter = 'all';
 let checkinSortDir = 'desc';
@@ -456,6 +456,10 @@ function escHtml(v){
 
 function canEdit(item){
   return !!session && (session.role === 'admin' || !item.createdBy || item.createdBy === session.username);
+}
+
+function canDelete(item){
+  return !!session && (session.role === 'admin' || item.createdBy === session.username);
 }
 
 async function apiFetch(path, options = {}){
@@ -927,7 +931,7 @@ function startEdit(sticker){
   $('editBanner').style.display = 'flex';
   $('editBannerNum').textContent = item.sticker;
   $('saveBtn').textContent = 'Update item';
-  $('deleteItemBtn').style.display = 'block';
+  $('deleteItemBtn').style.display = canDelete(item) ? 'block' : 'none';
   showView('add');
   renderLocDetailChips();
   checkSaveEnabled();
@@ -969,12 +973,12 @@ function renderLogLocFilters(){
 }
 
 function renderUserFilterChips(el, currentValue, onPick){
-  const users = Array.from(new Set(items.map(i => i.createdBy).filter(Boolean))).sort();
+  const teams = Array.from(new Set(items.map(i => i.owner).filter(Boolean))).sort();
   if(session.role === 'admin'){
     el.innerHTML = '<div class="filter-chip active" data-uf="all">Everyone</div>' +
-      users.map(u => `<div class="filter-chip" data-uf="${escHtml(u)}">${escHtml(u)}</div>`).join('');
+      teams.map(t => `<div class="filter-chip" data-uf="${escHtml(t)}">${escHtml(t)}</div>`).join('');
   } else {
-    el.innerHTML = '<div class="filter-chip active" data-uf="all">Everyone</div><div class="filter-chip" data-uf="mine">Mine only</div>';
+    el.innerHTML = '<div class="filter-chip active" data-uf="all">Everyone</div><div class="filter-chip" data-uf="mine">My team</div>';
   }
   el.querySelectorAll('.filter-chip').forEach(chip => {
     chip.classList.toggle('active', chip.dataset.uf === currentValue);
@@ -992,8 +996,13 @@ function renderLogUserFilters(){
 
 function itemMatchesUserFilter(item, filterValue){
   if(filterValue === 'all') return true;
-  if(filterValue === 'mine') return item.createdBy === session.username;
-  return item.createdBy === filterValue;
+  if(filterValue === 'mine') return item.owner === defaultOwner;
+  return item.owner === filterValue;
+}
+
+function updateBulkDeleteBtn(){
+  $('bulkDeleteBtn').textContent = `Delete selected (${selectedStickers.size})`;
+  $('bulkDeleteBtn').disabled = selectedStickers.size === 0;
 }
 
 function renderList(){
@@ -1001,7 +1010,6 @@ function renderList(){
   const list = $('itemList');
   const q = logSearchQuery.trim().toLowerCase();
   let filtered = items;
-  if(currentFilter !== 'all') filtered = filtered.filter(i => i.flag === currentFilter);
   if(logLocationFilter !== 'all') filtered = filtered.filter(i => i.location === logLocationFilter);
   filtered = filtered.filter(i => itemMatchesUserFilter(i, logUserFilter));
   if(q) filtered = filtered.filter(i => i.sticker.includes(q) || i.name.toLowerCase().includes(q));
@@ -1011,6 +1019,7 @@ function renderList(){
   }
   list.innerHTML = filtered.map(i => `
     <div class="item">
+      ${selectMode ? (canDelete(i) ? `<input type="checkbox" class="select-check" data-sticker="${escHtml(i.sticker)}" ${selectedStickers.has(i.sticker) ? 'checked' : ''}>` : `<span style="width:20px; flex-shrink:0;"></span>`) : ''}
       ${i.photo ? `<img class="thumb" src="${photoSrc(i.photo)}" data-lightbox="${escHtml(photoSrc(i.photo))}">` : `<div class="thumb empty">no photo</div>`}
       <div class="body">
         <div class="top">
@@ -1021,11 +1030,18 @@ function renderList(){
         <div class="name">${i.name}</div>
         <div class="meta">${i.type}${i.packing ? ' · ' + i.packing : ''} · qty ${i.qty} · ${i.location}${i.locationDetail ? ' (' + i.locationDetail + ')' : ''} → ${i.destination}${i.destinationDetail ? ' (' + i.destinationDetail + ')' : ''}${i.owner ? ' · ' + i.owner : ''}${i.createdBy ? ' · by ' + i.createdBy : ''}</div>
       </div>
-      ${canEdit(i) ? `<button class="edit-btn" data-sticker="${escHtml(i.sticker)}">&#9998;</button>` : ''}
+      ${!selectMode && canEdit(i) ? `<button class="edit-btn" data-sticker="${escHtml(i.sticker)}">&#9998;</button>` : ''}
     </div>
   `).join('');
   list.querySelectorAll('.edit-btn').forEach(btn => {
     btn.addEventListener('click', () => startEdit(btn.dataset.sticker));
+  });
+  list.querySelectorAll('.select-check').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if(cb.checked) selectedStickers.add(cb.dataset.sticker);
+      else selectedStickers.delete(cb.dataset.sticker);
+      updateBulkDeleteBtn();
+    });
   });
   bindThumbLightbox(list);
 }
@@ -1035,13 +1051,32 @@ $('logSearch').addEventListener('input', e => {
   renderList();
 });
 
-document.querySelectorAll('#filters .filter-chip').forEach(chip => {
-  chip.addEventListener('click', () => {
-    document.querySelectorAll('#filters .filter-chip').forEach(c => c.classList.remove('active'));
-    chip.classList.add('active');
-    currentFilter = chip.dataset.filter;
-    renderList();
-  });
+$('selectModeBtn').addEventListener('click', () => {
+  selectMode = !selectMode;
+  selectedStickers.clear();
+  $('selectModeBtn').textContent = selectMode ? 'Cancel' : 'Select';
+  $('bulkActionBar').style.display = selectMode ? 'block' : 'none';
+  updateBulkDeleteBtn();
+  renderList();
+});
+
+$('bulkDeleteBtn').addEventListener('click', async () => {
+  if(selectedStickers.size === 0) return;
+  const stickers = Array.from(selectedStickers);
+  if(!confirm(`Delete ${stickers.length} item${stickers.length > 1 ? 's' : ''}? This can't be undone.`)) return;
+  $('bulkDeleteBtn').disabled = true;
+  for(const sticker of stickers){
+    try{ await apiFetch(`/api/items/${encodeURIComponent(sticker)}`, { method: 'DELETE' }); }catch(e){}
+  }
+  items = items.filter(i => !selectedStickers.has(i.sticker));
+  selectedStickers.clear();
+  await saveItems();
+  showToast(`Deleted ${stickers.length} item${stickers.length > 1 ? 's' : ''}`);
+  selectMode = false;
+  $('selectModeBtn').textContent = 'Select';
+  $('bulkActionBar').style.display = 'none';
+  renderList();
+  updateHeaderCount();
 });
 
 let checkinFilter = 'all';
@@ -1430,7 +1465,6 @@ function parseCatalogCsv(text){
     const parts = lines[i].split(',');
     const name = clean(parts[0]);
     if(!name) continue;
-    const reqRaw = clean(parts[8]).toLowerCase();
     out.push({
       name,
       qty: parseInt(clean(parts[1]) || '0', 10) || 0,
@@ -1439,8 +1473,7 @@ function parseCatalogCsv(text){
       location: clean(parts[4]),
       locationDetail: clean(parts[5]),
       destinationDetail: clean(parts[6]),
-      owner: clean(parts[7]),
-      flag: reqRaw === 'required' ? 'green' : (reqRaw === 'not required' ? 'red' : '')
+      owner: clean(parts[7])
     });
   }
   return out;
@@ -1449,17 +1482,16 @@ function parseCatalogCsv(text){
 const A9_ROOM_OPTIONS = ['Carbon Fiber CNC','Dirty Work Room','3D Printer Room','Store 01','Store 02','Storage S1','Storage S3','Storage S4','Storage S5','Storage S6','Storage S7','Tools Room','Storage/Drone Repairs'];
 
 $('downloadTemplateBtn').addEventListener('click', () => {
-  const headers = ['Name','Qty','Type','Packing','Location','Exact Location','Location at A9','End User','Requirement'];
+  const headers = ['Name','Qty','Type','Packing','Location','Exact Location','Location at A9','Team'];
   const rows = [
-    ['Bench drill', 1, 'Equipment', 'In box', 'Masdar', 'Rack 3', 'Storage S1', 'John', 'Required'],
-    ['M4 bolts box', 5, 'Consumables', 'Bag', 'Kizad', '', '', 'Sara', 'Not required']
+    ['Bench drill', 1, 'Equipment', 'In box', 'Masdar', 'Rack 3', 'Storage S1', 'Team A'],
+    ['M4 bolts box', 5, 'Consumables', 'Bag', 'Kizad', '', '', 'Team B']
   ];
   downloadStyledExcel('item-list-template.xlsx', headers, rows, [], -1, {
     2: ['Equipment', 'Tool', 'Consumables', 'Accessory'],
     3: ['In box', 'Bag', 'Unpacked'],
     4: locations,
-    6: A9_ROOM_OPTIONS,
-    8: ['Required', 'Not required']
+    6: A9_ROOM_OPTIONS
   });
 });
 
@@ -1473,7 +1505,6 @@ async function parseCatalogXlsx(buffer){
     const name = String(vals[1] || '').trim();
     if(!name) return;
     if(rowNumber === 1 && /^name$/i.test(name)) return;
-    const reqRaw = String(vals[9] || '').trim().toLowerCase();
     out.push({
       name,
       qty: parseInt(vals[2], 10) || 0,
@@ -1482,8 +1513,7 @@ async function parseCatalogXlsx(buffer){
       location: String(vals[5] || '').trim(),
       locationDetail: String(vals[6] || '').trim(),
       destinationDetail: String(vals[7] || '').trim(),
-      owner: String(vals[8] || '').trim(),
-      flag: reqRaw === 'required' ? 'green' : (reqRaw === 'not required' ? 'red' : '')
+      owner: String(vals[8] || '').trim()
     });
   });
   return out;

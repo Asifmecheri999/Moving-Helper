@@ -120,8 +120,7 @@ async function bulkCreateItems(request, env) {
       location: String(r?.location || '').trim(),
       locationDetail: String(r?.locationDetail || '').trim(),
       destinationDetail: String(r?.destinationDetail || '').trim(),
-      owner: String(r?.owner || '').trim(),
-      flag: String(r?.flag || '').trim()
+      owner: String(r?.owner || '').trim()
     }))
     .filter(r => r.name)
     .slice(0, 2000);
@@ -134,9 +133,9 @@ async function bulkCreateItems(request, env) {
   const stmts = rows.map(r => {
     const sticker = String(next++).padStart(5, '0');
     return env.DB.prepare(
-      `INSERT INTO items (sticker, name, type, packing, qty, location, location_detail, destination, destination_detail, owner, flag, ts, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
-    ).bind(sticker, r.name, r.type, r.packing, r.qty, r.location, r.locationDetail, 'A9 Warehouse', r.destinationDetail, r.owner, r.flag, now);
+      `INSERT INTO items (sticker, name, type, packing, qty, location, location_detail, destination, destination_detail, owner, ts, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
+    ).bind(sticker, r.name, r.type, r.packing, r.qty, r.location, r.locationDetail, 'A9 Warehouse', r.destinationDetail, r.owner, now);
   });
   await env.DB.batch(stmts);
   return jsonResponse({ ok: true, count: rows.length });
