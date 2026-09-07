@@ -10,13 +10,22 @@ async function sha256Hex(str) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+async function getUserByUsername(username, env, cols) {
+  try {
+    return await env.DB.prepare(`SELECT ${cols.join(', ')}, team FROM users WHERE username = ?`).bind(username).first();
+  } catch (e) {
+    const row = await env.DB.prepare(`SELECT ${cols.join(', ')} FROM users WHERE username = ?`).bind(username).first();
+    return row ? { ...row, team: null } : row;
+  }
+}
+
 async function getSession(request, env) {
   const auth = request.headers.get('Authorization') || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   if (!token) return null;
   const row = await env.DB.prepare('SELECT username FROM sessions WHERE token = ?').bind(token).first();
   if (!row) return null;
-  const user = await env.DB.prepare('SELECT username, role, team FROM users WHERE username = ?').bind(row.username).first();
+  const user = await getUserByUsername(row.username, env, ['username', 'role']);
   return user || null;
 }
 
@@ -50,7 +59,7 @@ async function login(request, env) {
   const code = (body.code || '').trim();
   if (!username || !/^\d{4}$/.test(code)) return jsonResponse({ error: 'enter a username and a 4-digit code' }, 400);
 
-  let user = await env.DB.prepare('SELECT username, salt, code_hash, role, team FROM users WHERE username = ?').bind(username).first();
+  let user = await getUserByUsername(username, env, ['username', 'salt', 'code_hash', 'role']);
   if (!user) {
     const salt = crypto.randomUUID();
     const codeHash = await sha256Hex(salt + code);
@@ -195,8 +204,13 @@ async function getPhoto(key, env) {
 }
 
 async function listUsers(env) {
-  const { results } = await env.DB.prepare('SELECT username, role, team, created_at FROM users ORDER BY username').all();
-  return jsonResponse(results);
+  try {
+    const { results } = await env.DB.prepare('SELECT username, role, team, created_at FROM users ORDER BY username').all();
+    return jsonResponse(results);
+  } catch (e) {
+    const { results } = await env.DB.prepare('SELECT username, role, created_at FROM users ORDER BY username').all();
+    return jsonResponse(results.map(r => ({ ...r, team: null })));
+  }
 }
 
 async function deleteUser(username, env) {
