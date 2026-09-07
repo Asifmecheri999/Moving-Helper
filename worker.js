@@ -242,13 +242,16 @@ async function createTeamUser(request, env) {
   const code = String(body?.code || '').trim();
   const teams = cleanTeamsInput(body?.teams);
   if (!username || !/^\d{4}$/.test(code)) return jsonResponse({ error: 'enter a username and a 4-digit code' }, 400);
+  const existing = await env.DB.prepare('SELECT username FROM users WHERE username = ?').bind(username).first();
+  if (existing) return jsonResponse({ error: 'that username is already taken' }, 409);
   const salt = crypto.randomUUID();
   const codeHash = await sha256Hex(salt + code);
   try {
     await env.DB.prepare('INSERT INTO users (username, salt, code_hash, role, teams, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(username, salt, codeHash, 'user', teams.length ? JSON.stringify(teams) : null, new Date().toISOString()).run();
   } catch (e) {
-    return jsonResponse({ error: 'that username is already taken' }, 409);
+    await env.DB.prepare('INSERT INTO users (username, salt, code_hash, role, created_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(username, salt, codeHash, 'user', new Date().toISOString()).run();
   }
   return jsonResponse({ ok: true }, 201);
 }
@@ -259,7 +262,11 @@ async function setUserTeams(username, request, env) {
   const teams = cleanTeamsInput(body?.teams);
   const existing = await env.DB.prepare('SELECT username FROM users WHERE username = ?').bind(username).first();
   if (!existing) return jsonResponse({ error: 'not found' }, 404);
-  await env.DB.prepare('UPDATE users SET teams = ? WHERE username = ?').bind(teams.length ? JSON.stringify(teams) : null, username).run();
+  try {
+    await env.DB.prepare('UPDATE users SET teams = ? WHERE username = ?').bind(teams.length ? JSON.stringify(teams) : null, username).run();
+  } catch (e) {
+    return jsonResponse({ error: 'the teams column is not set up yet — run migration_user_team.sql' }, 500);
+  }
   return jsonResponse({ ok: true });
 }
 
