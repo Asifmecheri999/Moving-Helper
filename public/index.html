@@ -753,7 +753,6 @@ async function submitAuth(){
 }
 
 $('loginBtn').addEventListener('click', submitAuth);
-$('loginCode').addEventListener('keydown', e => { if(e.key === 'Enter') submitAuth(); });
 
 function photoSrc(raw){
   if(!raw) return '';
