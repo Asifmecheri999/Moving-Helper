@@ -221,7 +221,7 @@
     <input type="password" id="loginCode" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="&bull;&bull;&bull;&bull;">
     <label>Location <span class="req">*</span> <span style="font-weight:400; color:#8a94a6;">(pick one or more)</span></label>
     <div class="chip-group" id="loginLocGroup"></div>
-    <label>Team (optional)</label>
+    <label>Team <span class="req" id="teamReqMark" style="display:none;">*</span></label>
     <div class="chip-group" id="loginTeamGroup"></div>
     <button class="save-btn" id="loginBtn">Log in</button>
     <div id="loginError" class="form-error" style="display:none;"></div>
@@ -548,6 +548,11 @@ let loginSelectedTeam = teamList.includes(defaultOwner) ? defaultOwner : '';
 
 function renderLoginTeamChips(){
   const el = $('loginTeamGroup');
+  $('teamReqMark').style.display = teamList.length ? '' : 'none';
+  if(!teamList.length){
+    el.innerHTML = `<div style="font-size:12.5px; color:#8a94a6;">No teams set up yet — ask your admin to upload a team list.</div>`;
+    return;
+  }
   el.innerHTML = teamList.map(t => `<button type="button" class="chip" data-value="${escHtml(t)}">${escHtml(t)}</button>`).join('');
   function render(){ el.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.value === loginSelectedTeam)); }
   el.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
@@ -576,6 +581,11 @@ async function submitAuth(){
   if(!username || !code) return;
   if(selectedLocations.length === 0){
     $('loginError').textContent = 'Please pick at least one location.';
+    $('loginError').style.display = 'block';
+    return;
+  }
+  if(teamList.length > 0 && !teamName){
+    $('loginError').textContent = 'Please pick a team.';
     $('loginError').style.display = 'block';
     return;
   }
