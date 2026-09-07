@@ -260,12 +260,31 @@ async function replaceCatalog(request, env) {
   return jsonResponse({ ok: true, count: rows.length });
 }
 
+async function getTeams(env) {
+  const { results } = await env.DB.prepare('SELECT name FROM teams ORDER BY name').all();
+  return jsonResponse(results.map(r => r.name));
+}
+
+async function replaceTeams(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
+  if (!Array.isArray(body)) return jsonResponse({ error: 'expected an array of team names' }, 400);
+  const names = Array.from(new Set(body.map(n => String(n || '').trim()).filter(Boolean))).slice(0, 500);
+  await env.DB.prepare('DELETE FROM teams').run();
+  if (names.length) {
+    const stmts = names.map(n => env.DB.prepare('INSERT OR REPLACE INTO teams (name) VALUES (?)').bind(n));
+    await env.DB.batch(stmts);
+  }
+  return jsonResponse({ ok: true, count: names.length });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
 
     if (path === '/api/login' && request.method === 'POST') return login(request, env);
+    if (path === '/api/teams' && request.method === 'GET') return getTeams(env);
 
     if (path.startsWith('/api/photos/') && request.method === 'GET') {
       return getPhoto(decodeURIComponent(path.slice('/api/photos/'.length)), env);
@@ -306,6 +325,11 @@ export default {
       if (path === '/api/catalog' && request.method === 'POST') {
         if (session.role !== 'admin') return jsonResponse({ error: 'forbidden' }, 403);
         return replaceCatalog(request, env);
+      }
+
+      if (path === '/api/teams' && request.method === 'POST') {
+        if (session.role !== 'admin') return jsonResponse({ error: 'forbidden' }, 403);
+        return replaceTeams(request, env);
       }
 
       return jsonResponse({ error: 'not found' }, 404);
