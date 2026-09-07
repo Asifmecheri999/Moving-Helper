@@ -107,40 +107,6 @@ async function createItem(request, env, session) {
   return jsonResponse({ ok: true }, 201);
 }
 
-async function bulkCreateItems(request, env) {
-  let body;
-  try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
-  if (!Array.isArray(body)) return jsonResponse({ error: 'expected an array' }, 400);
-  const rows = body
-    .map(r => ({
-      name: String(r?.name || '').trim(),
-      qty: Number(r?.qty) || 0,
-      type: String(r?.type || '').trim(),
-      packing: String(r?.packing || '').trim(),
-      location: String(r?.location || '').trim(),
-      locationDetail: String(r?.locationDetail || '').trim(),
-      destinationDetail: String(r?.destinationDetail || '').trim(),
-      owner: String(r?.owner || '').trim()
-    }))
-    .filter(r => r.name)
-    .slice(0, 2000);
-  if (!rows.length) return jsonResponse({ error: 'no valid rows' }, 400);
-
-  const maxRow = await env.DB.prepare('SELECT MAX(CAST(sticker AS INTEGER)) as m FROM items').first();
-  let next = (maxRow && maxRow.m ? maxRow.m : 0) + 1;
-  const now = new Date().toISOString();
-
-  const stmts = rows.map(r => {
-    const sticker = String(next++).padStart(5, '0');
-    return env.DB.prepare(
-      `INSERT INTO items (sticker, name, type, packing, qty, location, location_detail, destination, destination_detail, owner, ts, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
-    ).bind(sticker, r.name, r.type, r.packing, r.qty, r.location, r.locationDetail, 'A9 Warehouse', r.destinationDetail, r.owner, now);
-  });
-  await env.DB.batch(stmts);
-  return jsonResponse({ ok: true, count: rows.length });
-}
-
 const UPDATABLE_FIELDS = {
   name: 'name', type: 'type', packing: 'packing', qty: 'qty',
   location: 'location', locationDetail: 'location_detail',
@@ -239,43 +205,9 @@ async function deleteUser(username, env) {
   return jsonResponse({ ok: true });
 }
 
-async function getCatalog(env) {
-  const { results } = await env.DB.prepare('SELECT name, qty FROM catalog ORDER BY name').all();
-  return jsonResponse(results);
-}
-
-async function replaceCatalog(request, env) {
-  let body;
-  try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
-  if (!Array.isArray(body)) return jsonResponse({ error: 'expected an array of {name, qty}' }, 400);
-  const rows = body
-    .map(r => ({ name: String(r?.name || '').trim(), qty: Number(r?.qty) || 0 }))
-    .filter(r => r.name)
-    .slice(0, 5000);
-  await env.DB.prepare('DELETE FROM catalog').run();
-  if (rows.length) {
-    const stmts = rows.map(r => env.DB.prepare('INSERT OR REPLACE INTO catalog (name, qty) VALUES (?, ?)').bind(r.name, r.qty));
-    await env.DB.batch(stmts);
-  }
-  return jsonResponse({ ok: true, count: rows.length });
-}
-
 async function getTeams(env) {
   const { results } = await env.DB.prepare('SELECT name FROM teams ORDER BY name').all();
   return jsonResponse(results.map(r => r.name));
-}
-
-async function replaceTeams(request, env) {
-  let body;
-  try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
-  if (!Array.isArray(body)) return jsonResponse({ error: 'expected an array of team names' }, 400);
-  const names = Array.from(new Set(body.map(n => String(n || '').trim()).filter(Boolean))).slice(0, 500);
-  await env.DB.prepare('DELETE FROM teams').run();
-  if (names.length) {
-    const stmts = names.map(n => env.DB.prepare('INSERT OR REPLACE INTO teams (name) VALUES (?)').bind(n));
-    await env.DB.batch(stmts);
-  }
-  return jsonResponse({ ok: true, count: names.length });
 }
 
 async function addTeam(request, env) {
@@ -287,13 +219,36 @@ async function addTeam(request, env) {
   return jsonResponse({ ok: true });
 }
 
+async function deleteTeam(name, env) {
+  await env.DB.prepare('DELETE FROM teams WHERE name = ?').bind(name).run();
+  return jsonResponse({ ok: true });
+}
+
+async function getLocations(env) {
+  const { results } = await env.DB.prepare('SELECT name FROM locations ORDER BY name').all();
+  return jsonResponse(results.map(r => r.name));
+}
+
+async function addLocation(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
+  const name = String(body?.name || '').trim();
+  if (!name) return jsonResponse({ error: 'location name required' }, 400);
+  await env.DB.prepare('INSERT OR IGNORE INTO locations (name) VALUES (?)').bind(name).run();
+  return jsonResponse({ ok: true });
+}
+
+async function deleteLocation(name, env) {
+  await env.DB.prepare('DELETE FROM locations WHERE name = ?').bind(name).run();
+  return jsonResponse({ ok: true });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
 
     if (path === '/api/login' && request.method === 'POST') return login(request, env);
-    if (path === '/api/teams' && request.method === 'GET') return getTeams(env);
 
     if (path.startsWith('/api/photos/') && request.method === 'GET') {
       return getPhoto(decodeURIComponent(path.slice('/api/photos/'.length)), env);
@@ -306,10 +261,8 @@ export default {
       if (path === '/api/logout' && request.method === 'POST') return logout(request, env);
       if (path === '/api/items' && request.method === 'GET') return listItems(env);
       if (path === '/api/items' && request.method === 'POST') return createItem(request, env, session);
-      if (path === '/api/items/bulk' && request.method === 'POST') {
-        if (session.role !== 'admin') return jsonResponse({ error: 'forbidden' }, 403);
-        return bulkCreateItems(request, env);
-      }
+      if (path === '/api/teams' && request.method === 'GET') return getTeams(env);
+      if (path === '/api/locations' && request.method === 'GET') return getLocations(env);
 
       let m = path.match(/^\/api\/items\/([^/]+)$/);
       if (m) {
@@ -330,17 +283,19 @@ export default {
         return deleteUser(decodeURIComponent(m[1]), env);
       }
 
-      if (path === '/api/catalog' && request.method === 'GET') return getCatalog(env);
-      if (path === '/api/catalog' && request.method === 'POST') {
+      if (path === '/api/teams/add' && request.method === 'POST') return addTeam(request, env);
+      m = path.match(/^\/api\/teams\/([^/]+)$/);
+      if (m && request.method === 'DELETE') {
         if (session.role !== 'admin') return jsonResponse({ error: 'forbidden' }, 403);
-        return replaceCatalog(request, env);
+        return deleteTeam(decodeURIComponent(m[1]), env);
       }
 
-      if (path === '/api/teams' && request.method === 'POST') {
+      if (path === '/api/locations/add' && request.method === 'POST') return addLocation(request, env);
+      m = path.match(/^\/api\/locations\/([^/]+)$/);
+      if (m && request.method === 'DELETE') {
         if (session.role !== 'admin') return jsonResponse({ error: 'forbidden' }, 403);
-        return replaceTeams(request, env);
+        return deleteLocation(decodeURIComponent(m[1]), env);
       }
-      if (path === '/api/teams/add' && request.method === 'POST') return addTeam(request, env);
 
       return jsonResponse({ error: 'not found' }, 404);
     }

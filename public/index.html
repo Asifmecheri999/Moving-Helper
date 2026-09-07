@@ -219,11 +219,6 @@
     <input type="text" id="loginUsername" autocomplete="username">
     <label>4-digit code</label>
     <input type="password" id="loginCode" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="&bull;&bull;&bull;&bull;">
-    <label>Location <span class="req">*</span> <span style="font-weight:400; color:#8a94a6;">(pick one or more)</span></label>
-    <div class="chip-group" id="loginLocGroup"></div>
-    <label>Team <span class="req">*</span></label>
-    <div class="chip-group" id="loginTeamGroup"></div>
-    <input type="text" id="newTeamInput" placeholder="Type your team name" style="display:none; margin-top:8px;">
     <button class="save-btn" id="loginBtn">Log in</button>
     <div id="loginError" class="form-error" style="display:none;"></div>
     <div style="font-size:11.5px; color:#8a94a6; text-align:center; margin-top:12px;">First time? Just type a username and a 4-digit code you'll remember — it's created automatically.</div>
@@ -245,9 +240,9 @@
       <div class="name" id="homeUserLabel"></div>
     </div>
     <button class="menu-btn" data-view="add">Add item</button>
-    <button class="menu-btn" data-view="csv" id="csvMenuBtn" style="display:none;">Add items from sheet</button>
     <button class="menu-btn" data-view="list">Log</button>
     <button class="menu-btn" data-view="checkin">A9 Check-in</button>
+    <button class="menu-btn" data-view="settings">Settings</button>
     <button class="menu-btn" data-view="admin" id="adminMenuBtn" style="display:none;">Admin</button>
     <button class="menu-btn logout" id="homeLogoutBtn">Log out</button>
   </div>
@@ -273,8 +268,7 @@
       </div>
 
       <label>Item name <span class="req">*</span></label>
-      <input type="text" id="itemName" list="catalogOptions" placeholder="e.g. Bench drill, M4 bolts box">
-      <datalist id="catalogOptions"></datalist>
+      <input type="text" id="itemName" placeholder="e.g. Bench drill, M4 bolts box">
 
       <label>Type <span class="req">*</span></label>
       <div class="chip-group" id="itemTypeGroup">
@@ -389,14 +383,20 @@
   <div id="adminView" style="display:none;">
     <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Home</a>
     <div class="card">
-      <label style="font-size:17px; font-weight:700; color:var(--ink);">Team list</label>
-      <div style="font-size:12.5px; color:#6b6a62; margin-bottom:6px;">
-        Download the template, fill in one team per row, then upload it — this becomes the list people pick from at login.
+      <label style="font-size:17px; font-weight:700; color:var(--ink);">Teams</label>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <input type="text" id="adminNewTeamInput" placeholder="New team name" style="flex:1;">
+        <button class="save-btn" id="adminAddTeamBtn" style="margin-top:0; width:auto; padding:0 18px;">Add</button>
       </div>
-      <button class="export-btn" id="downloadTeamTemplateBtn" style="margin-top:14px;">Download template</button>
-      <label>Upload your filled-in file</label>
-      <input type="file" accept=".csv,.xlsx,text/csv,text/comma-separated-values,application/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain" id="teamListFile">
-      <div id="teamListStatus" style="font-size:12px; color:#6b6a62; margin-top:10px;"></div>
+      <div id="adminTeamList" style="margin-top:10px;"></div>
+    </div>
+    <div class="card">
+      <label style="font-size:17px; font-weight:700; color:var(--ink);">Locations</label>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <input type="text" id="adminNewLocInput" placeholder="New location name" style="flex:1;">
+        <button class="save-btn" id="adminAddLocBtn" style="margin-top:0; width:auto; padding:0 18px;">Add</button>
+      </div>
+      <div id="adminLocList" style="margin-top:10px;"></div>
     </div>
     <div class="card" style="font-size:12.5px; color:#6b6a62;">
       Anyone gets an account automatically the first time they log in with a new username. Remove a user below if needed.
@@ -404,22 +404,41 @@
     <div id="userList"></div>
   </div>
 
-  <div id="csvView" style="display:none;">
+  <div id="settingsView" style="display:none;">
     <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Home</a>
     <div class="card">
-      <label style="font-size:17px; font-weight:700; color:var(--ink);">Upload</label>
-      <div style="font-size:12.5px; color:#6b6a62; margin-bottom:6px;">
-        One file, two ways to use it: turn each row into a real logged item (auto-numbered — anyone can open it later to add a photo), or just save the names for the suggestion dropdown on Item Name.
-      </div>
-      <button class="export-btn" id="downloadTemplateBtn" style="margin-top:14px;">Download template</button>
-      <label>Upload your filled-in file</label>
-      <input type="file" accept=".csv,.xlsx,text/csv,text/comma-separated-values,application/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain" id="catalogFile">
-      <div id="catalogChoice" style="display:none; margin-top:14px;">
-        <div id="catalogPreviewText" style="font-size:12.5px; color:#6b6a62; margin-bottom:10px;"></div>
-        <button class="save-btn" id="catalogAddLogBtn" style="margin-top:0;">Add to Log</button>
-        <button class="export-btn" id="catalogSuggestBtn" style="margin-top:10px;">Suggestions only</button>
-      </div>
-      <div id="catalogStatus" style="font-size:12px; color:#6b6a62; margin-top:10px;"></div>
+      <label>Location <span class="req">*</span> <span style="font-weight:400; color:#8a94a6;">(pick one or more)</span></label>
+      <div class="chip-group" id="settingsLocGroup"></div>
+      <button type="button" class="chip" id="settingsAddLocChip" style="margin-top:8px;">+ Add a location</button>
+      <input type="text" id="settingsNewLocInput" placeholder="Type a location name" style="display:none; margin-top:8px;">
+
+      <label style="margin-top:18px;">Team <span class="req">*</span></label>
+      <div class="chip-group" id="settingsTeamGroup"></div>
+      <button type="button" class="chip" id="settingsAddTeamChip" style="margin-top:8px;">+ My team isn't listed</button>
+      <input type="text" id="settingsNewTeamInput" placeholder="Type your team name" style="display:none; margin-top:8px;">
+
+      <button class="save-btn" id="settingsSaveBtn" style="margin-top:18px;">Save</button>
+      <div id="settingsError" class="form-error" style="display:none;"></div>
+    </div>
+  </div>
+
+  <div id="setupView" style="display:none;">
+    <div class="card">
+      <label style="font-size:17px; font-weight:700; color:var(--ink);">Set up your location & team</label>
+      <div style="font-size:12.5px; color:#6b6a62; margin-bottom:6px;">Just once — you can change this later from Settings.</div>
+
+      <label style="margin-top:14px;">Location <span class="req">*</span> <span style="font-weight:400; color:#8a94a6;">(pick one or more)</span></label>
+      <div class="chip-group" id="setupLocGroup"></div>
+      <button type="button" class="chip" id="setupAddLocChip" style="margin-top:8px;">+ Add a location</button>
+      <input type="text" id="setupNewLocInput" placeholder="Type a location name" style="display:none; margin-top:8px;">
+
+      <label style="margin-top:18px;">Team <span class="req">*</span></label>
+      <div class="chip-group" id="setupTeamGroup"></div>
+      <button type="button" class="chip" id="setupAddTeamChip" style="margin-top:8px;">+ My team isn't listed</button>
+      <input type="text" id="setupNewTeamInput" placeholder="Type your team name" style="display:none; margin-top:8px;">
+
+      <button class="save-btn" id="setupContinueBtn" style="margin-top:18px;">Continue</button>
+      <div id="setupError" class="form-error" style="display:none;"></div>
     </div>
   </div>
 
@@ -436,7 +455,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script>
 let items = [];
-let locations = ['Masdar', 'Airport Warehouse', 'Kizad'];
+let locations = [];
 const A9_LOCATION = 'A9 Warehouse';
 let photoData = null;
 let logSearchQuery = '';
@@ -458,7 +477,6 @@ try{
 let itemLocationValue = '';
 let defaultLocDetail = localStorage.getItem('tagger-locdetail') || '';
 let offline = false;
-let catalog = [];
 let teamList = [];
 
 let session = null;
@@ -504,8 +522,11 @@ function showApp(){
   $('appRoot').style.display = 'block';
   $('homeUserLabel').textContent = session.username + (session.role === 'admin' ? ' (admin)' : '');
   $('adminMenuBtn').style.display = session.role === 'admin' ? '' : 'none';
-  $('csvMenuBtn').style.display = session.role === 'admin' ? '' : 'none';
-  showView('home');
+  if(defaultLocations.length === 0 || !defaultOwner){
+    showView('setup');
+  } else {
+    showView('home');
+  }
 }
 
 async function logout(){
@@ -514,12 +535,13 @@ async function logout(){
   showLoginScreen();
 }
 
-const VIEWS = ['home', 'add', 'list', 'checkin', 'admin', 'csv'];
+const VIEWS = ['home', 'add', 'list', 'checkin', 'admin', 'settings', 'setup'];
 function showView(name){
   VIEWS.forEach(v => { $(v + 'View').style.display = v === name ? 'block' : 'none'; });
   if(name === 'list'){ renderLogUserFilters(); renderList(); }
   else if(name === 'checkin'){ renderCheckinUserFilters(); renderCheckinStatus(); renderCheckinList(); }
-  else if(name === 'admin'){ renderUserList(); }
+  else if(name === 'admin'){ renderUserList(); renderAdminTeamList(); renderAdminLocList(); }
+  else if(name === 'settings'){ initSettingsPickers(); }
 }
 
 document.querySelectorAll('.menu-btn[data-view]').forEach(btn => {
@@ -530,76 +552,177 @@ document.querySelectorAll('[data-back]').forEach(link => {
 });
 $('homeLogoutBtn').addEventListener('click', logout);
 
-let loginSelectedLocations = new Set(defaultLocations);
+function makeLocationPicker(prefix, initialSelected){
+  const selected = new Set(initialSelected);
+  let creating = false;
+  const groupEl = () => $(prefix + 'LocGroup');
+  const addChipEl = () => $(prefix + 'AddLocChip');
+  const inputEl = () => $(prefix + 'NewLocInput');
 
-function renderLoginLocChips(){
-  const el = $('loginLocGroup');
-  el.innerHTML = locations.map(l => `<button type="button" class="chip" data-value="${escHtml(l)}">${escHtml(l)}</button>`).join('');
-  function render(){ el.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', loginSelectedLocations.has(c.dataset.value))); }
-  el.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
-    if(loginSelectedLocations.has(c.dataset.value)) loginSelectedLocations.delete(c.dataset.value);
-    else loginSelectedLocations.add(c.dataset.value);
-    render();
-  }));
-  render();
-}
-renderLoginLocChips();
-
-let loginSelectedTeam = teamList.includes(defaultOwner) ? defaultOwner : '';
-let loginCreatingTeam = false;
-
-function currentLoginTeam(){
-  return loginCreatingTeam ? $('newTeamInput').value.trim() : loginSelectedTeam;
-}
-
-function renderLoginTeamChips(){
-  const el = $('loginTeamGroup');
-  el.innerHTML = teamList.map(t => `<button type="button" class="chip" data-value="${escHtml(t)}">${escHtml(t)}</button>`).join('') +
-    `<button type="button" class="chip" id="newTeamChip">+ My team isn't listed</button>`;
-  el.querySelectorAll('.chip[data-value]').forEach(c => {
-    c.classList.toggle('on', !loginCreatingTeam && c.dataset.value === loginSelectedTeam);
-    c.addEventListener('click', () => {
-      loginCreatingTeam = false;
-      loginSelectedTeam = (loginSelectedTeam === c.dataset.value) ? '' : c.dataset.value;
-      renderLoginTeamChips();
+  function render(){
+    const el = groupEl();
+    el.innerHTML = locations.map(l => `<button type="button" class="chip" data-value="${escHtml(l)}">${escHtml(l)}</button>`).join('');
+    el.querySelectorAll('.chip').forEach(c => {
+      c.classList.toggle('on', selected.has(c.dataset.value));
+      c.addEventListener('click', () => {
+        if(selected.has(c.dataset.value)) selected.delete(c.dataset.value);
+        else selected.add(c.dataset.value);
+        render();
+      });
     });
+    addChipEl().classList.toggle('on', creating);
+    inputEl().style.display = creating ? 'block' : 'none';
+  }
+  addChipEl().addEventListener('click', () => {
+    creating = !creating;
+    render();
+    if(creating) inputEl().focus();
   });
-  $('newTeamChip').classList.toggle('on', loginCreatingTeam);
-  $('newTeamChip').addEventListener('click', () => {
-    loginCreatingTeam = !loginCreatingTeam;
-    renderLoginTeamChips();
-    if(loginCreatingTeam) $('newTeamInput').focus();
+  render();
+
+  return {
+    getSelected(){
+      const vals = new Set(selected);
+      const typed = inputEl().value.trim();
+      if(creating && typed) vals.add(typed);
+      return Array.from(vals);
+    },
+    getNewValue(){ return creating ? inputEl().value.trim() : ''; }
+  };
+}
+
+function makeTeamPicker(prefix, initialSelected){
+  let selected = initialSelected || '';
+  let creating = false;
+  const groupEl = () => $(prefix + 'TeamGroup');
+  const addChipEl = () => $(prefix + 'AddTeamChip');
+  const inputEl = () => $(prefix + 'NewTeamInput');
+
+  function render(){
+    const el = groupEl();
+    el.innerHTML = teamList.map(t => `<button type="button" class="chip" data-value="${escHtml(t)}">${escHtml(t)}</button>`).join('');
+    el.querySelectorAll('.chip').forEach(c => {
+      c.classList.toggle('on', !creating && c.dataset.value === selected);
+      c.addEventListener('click', () => {
+        creating = false;
+        selected = (selected === c.dataset.value) ? '' : c.dataset.value;
+        render();
+      });
+    });
+    addChipEl().classList.toggle('on', creating);
+    inputEl().style.display = creating ? 'block' : 'none';
+  }
+  addChipEl().addEventListener('click', () => {
+    creating = !creating;
+    render();
+    if(creating) inputEl().focus();
   });
-  $('newTeamInput').style.display = loginCreatingTeam ? 'block' : 'none';
+  render();
+
+  return {
+    getValue(){ return creating ? inputEl().value.trim() : selected; },
+    getNewValue(){ return creating ? inputEl().value.trim() : ''; }
+  };
 }
 
 async function loadTeams(){
   try{
-    const res = await fetch('/api/teams');
+    const res = await apiFetch('/api/teams');
     if(res.ok) teamList = await res.json();
   }catch(e){}
-  if(teamList.includes(defaultOwner)) loginSelectedTeam = defaultOwner;
-  renderLoginTeamChips();
 }
-loadTeams();
+
+async function loadLocationsList(){
+  try{
+    const res = await apiFetch('/api/locations');
+    if(res.ok) locations = await res.json();
+  }catch(e){}
+}
+
+async function registerNewTeamOrLocation(picker, list, addPath){
+  const val = picker.getNewValue();
+  if(val && !list.includes(val)){
+    try{
+      await apiFetch(addPath, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ name: val })
+      });
+      list.push(val);
+    }catch(e){}
+  }
+}
+
+let setupLocPicker = null;
+let setupTeamPicker = null;
+
+function enterSetup(){
+  setupLocPicker = makeLocationPicker('setup', defaultLocations);
+  setupTeamPicker = makeTeamPicker('setup', teamList.includes(defaultOwner) ? defaultOwner : '');
+}
+
+$('setupContinueBtn').addEventListener('click', async () => {
+  const selectedLocations = setupLocPicker.getSelected();
+  const teamName = setupTeamPicker.getValue();
+  $('setupError').style.display = 'none';
+  if(selectedLocations.length === 0){
+    $('setupError').textContent = 'Please pick at least one location.';
+    $('setupError').style.display = 'block';
+    return;
+  }
+  if(!teamName){
+    $('setupError').textContent = 'Please pick or create a team.';
+    $('setupError').style.display = 'block';
+    return;
+  }
+  await registerNewTeamOrLocation(setupLocPicker, locations, '/api/locations/add');
+  await registerNewTeamOrLocation(setupTeamPicker, teamList, '/api/teams/add');
+  defaultLocations = selectedLocations;
+  localStorage.setItem('tagger-defaultlocations', JSON.stringify(defaultLocations));
+  defaultOwner = teamName;
+  localStorage.setItem('tagger-defaultowner', defaultOwner);
+  showView('home');
+  loadData();
+});
+
+let settingsLocPicker = null;
+let settingsTeamPicker = null;
+
+function initSettingsPickers(){
+  settingsLocPicker = makeLocationPicker('settings', defaultLocations);
+  settingsTeamPicker = makeTeamPicker('settings', defaultOwner);
+}
+
+$('settingsSaveBtn').addEventListener('click', async () => {
+  const selectedLocations = settingsLocPicker.getSelected();
+  const teamName = settingsTeamPicker.getValue();
+  $('settingsError').style.display = 'none';
+  if(selectedLocations.length === 0){
+    $('settingsError').textContent = 'Please pick at least one location.';
+    $('settingsError').style.display = 'block';
+    return;
+  }
+  if(!teamName){
+    $('settingsError').textContent = 'Please pick or create a team.';
+    $('settingsError').style.display = 'block';
+    return;
+  }
+  await registerNewTeamOrLocation(settingsLocPicker, locations, '/api/locations/add');
+  await registerNewTeamOrLocation(settingsTeamPicker, teamList, '/api/teams/add');
+  defaultLocations = selectedLocations;
+  localStorage.setItem('tagger-defaultlocations', JSON.stringify(defaultLocations));
+  defaultOwner = teamName;
+  localStorage.setItem('tagger-defaultowner', defaultOwner);
+  renderAddLocationChips();
+  showToast('Settings saved');
+  showView('home');
+});
 
 async function submitAuth(){
   const username = $('loginUsername').value.trim();
   const code = $('loginCode').value.trim();
-  const selectedLocations = Array.from(loginSelectedLocations);
-  const teamName = currentLoginTeam();
   $('loginError').style.display = 'none';
   if(!username || !code) return;
-  if(selectedLocations.length === 0){
-    $('loginError').textContent = 'Please pick at least one location.';
-    $('loginError').style.display = 'block';
-    return;
-  }
-  if(!teamName){
-    $('loginError').textContent = 'Please pick or create a team.';
-    $('loginError').style.display = 'block';
-    return;
-  }
   try{
     const res = await fetch('/api/login', {
       method: 'POST',
@@ -610,22 +733,12 @@ async function submitAuth(){
     if(!res.ok) throw new Error(data.error || 'Could not log in');
     session = { token: data.token, username: data.username, role: data.role };
     localStorage.setItem('tagger-session', JSON.stringify(session));
-    defaultLocations = selectedLocations;
-    localStorage.setItem('tagger-defaultlocations', JSON.stringify(defaultLocations));
-    defaultOwner = teamName;
-    localStorage.setItem('tagger-defaultowner', defaultOwner);
-    if(loginCreatingTeam && !teamList.includes(teamName)){
-      try{
-        await apiFetch('/api/teams/add', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ name: teamName })
-        });
-        teamList.push(teamName);
-      }catch(e){}
-    }
     $('loginUsername').value = '';
     $('loginCode').value = '';
+    await Promise.all([loadTeams(), loadLocationsList()]);
+    if(defaultLocations.length === 0 || !defaultOwner){
+      enterSetup();
+    }
     showApp();
     loadData();
   }catch(e){
@@ -720,11 +833,6 @@ const typeChip = setupChipGroup('itemTypeGroup', 'Equipment');
 const packingChip = setupChipGroup('itemPackingGroup', 'In box');
 
 async function loadData(){
-  try{
-    const rawLoc = localStorage.getItem('tagger-locations');
-    if(rawLoc) locations = JSON.parse(rawLoc);
-  }catch(e){}
-
   let cached = [];
   try{
     const raw = localStorage.getItem('tagger-items');
@@ -758,16 +866,6 @@ async function loadData(){
   renderAddLocationChips();
   renderLocDetailChips();
   renderList();
-
-  try{
-    const catRes = await apiFetch('/api/catalog');
-    if(catRes.ok) catalog = await catRes.json();
-  }catch(e){}
-  updateCatalogOptions();
-}
-
-function updateCatalogOptions(){
-  $('catalogOptions').innerHTML = catalog.map(c => `<option value="${escHtml(c.name)}"></option>`).join('');
 }
 
 function renderAddLocationChips(){
@@ -816,9 +914,6 @@ async function saveItems(){
   }catch(e){
     alert('Could not save — device storage may be full. Export your Excel file now to be safe.');
   }
-}
-async function saveLocations(){
-  localStorage.setItem('tagger-locations', JSON.stringify(locations));
 }
 function pad(n){ return String(n).padStart(5,'0'); }
 
@@ -889,11 +984,7 @@ function checkSaveEnabled(){
   const name = $('itemName').value.trim();
   $('saveBtn').disabled = !name;
 }
-$('itemName').addEventListener('input', () => {
-  checkSaveEnabled();
-  const match = catalog.find(c => c.name.toLowerCase() === $('itemName').value.trim().toLowerCase());
-  if(match) $('itemQty').value = match.qty;
-});
+$('itemName').addEventListener('input', checkSaveEnabled);
 $('itemLocDetail').addEventListener('input', renderLocDetailChips);
 
 function showToast(msg){
@@ -1550,202 +1641,76 @@ async function renderUserList(){
   }
 }
 
-function parseCatalogCsv(text){
-  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  if(!lines.length) return [];
-  const startIdx = /^name\s*,\s*qty/i.test(lines[0]) ? 1 : 0;
-  const clean = s => (s || '').trim().replace(/^"|"$/g, '');
-  const out = [];
-  for(let i = startIdx; i < lines.length; i++){
-    const parts = lines[i].split(',');
-    const name = clean(parts[0]);
-    if(!name) continue;
-    out.push({
-      name,
-      qty: parseInt(clean(parts[1]) || '0', 10) || 0,
-      type: clean(parts[2]),
-      packing: clean(parts[3]),
-      location: clean(parts[4]),
-      locationDetail: clean(parts[5]),
-      destinationDetail: clean(parts[6]),
-      owner: clean(parts[7])
-    });
-  }
-  return out;
-}
-
-const A9_ROOM_OPTIONS = ['Carbon Fiber CNC','Dirty Work Room','3D Printer Room','Store 01','Store 02','Storage S1','Storage S3','Storage S4','Storage S5','Storage S6','Storage S7','Tools Room','Storage/Drone Repairs'];
-
-$('downloadTemplateBtn').addEventListener('click', () => {
-  const headers = ['Name','Qty','Type','Packing','Location','Exact Location','Location at A9','Team'];
-  const rows = [
-    ['Bench drill', 1, 'Equipment', 'In box', 'Masdar', 'Rack 3', 'Storage S1', 'Team A'],
-    ['M4 bolts box', 5, 'Consumables', 'Bag', 'Kizad', '', '', 'Team B']
-  ];
-  downloadStyledExcel('item-list-template.xlsx', headers, rows, [], -1, {
-    2: ['Equipment', 'Tool', 'Consumables', 'Accessory'],
-    3: ['In box', 'Bag', 'Unpacked'],
-    4: locations,
-    6: A9_ROOM_OPTIONS
-  });
-});
-
-async function parseCatalogXlsx(buffer){
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(buffer);
-  const ws = wb.worksheets[0];
-  const out = [];
-  ws.eachRow((row, rowNumber) => {
-    const vals = row.values;
-    const name = String(vals[1] || '').trim();
-    if(!name) return;
-    if(rowNumber === 1 && /^name$/i.test(name)) return;
-    out.push({
-      name,
-      qty: parseInt(vals[2], 10) || 0,
-      type: String(vals[3] || '').trim(),
-      packing: String(vals[4] || '').trim(),
-      location: String(vals[5] || '').trim(),
-      locationDetail: String(vals[6] || '').trim(),
-      destinationDetail: String(vals[7] || '').trim(),
-      owner: String(vals[8] || '').trim()
+function renderAdminTeamList(){
+  const el = $('adminTeamList');
+  el.innerHTML = teamList.map(t => `
+    <div class="item">
+      <div class="body"><div class="name">${escHtml(t)}</div></div>
+      <button class="edit-btn del-team-btn" data-name="${escHtml(t)}">&times;</button>
+    </div>
+  `).join('') || `<div class="empty-state">No teams yet.</div>`;
+  el.querySelectorAll('.del-team-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if(!confirm(`Remove team "${btn.dataset.name}"?`)) return;
+      await apiFetch(`/api/teams/${encodeURIComponent(btn.dataset.name)}`, { method: 'DELETE' });
+      teamList = teamList.filter(t => t !== btn.dataset.name);
+      renderAdminTeamList();
     });
   });
-  return out;
 }
 
-let pendingCatalogRows = [];
-
-function resetCatalogUpload(){
-  $('catalogFile').value = '';
-  $('catalogChoice').style.display = 'none';
-  pendingCatalogRows = [];
-}
-
-$('catalogFile').addEventListener('change', e => {
-  const file = e.target.files[0];
-  if(!file) return;
-  const isXlsx = /\.xlsx$/i.test(file.name);
-  const reader = new FileReader();
-  reader.onload = async ev => {
-    pendingCatalogRows = isXlsx ? await parseCatalogXlsx(ev.target.result) : parseCatalogCsv(ev.target.result);
-    $('catalogStatus').textContent = '';
-    if(!pendingCatalogRows.length){
-      $('catalogStatus').textContent = 'No items found in that file.';
-      $('catalogChoice').style.display = 'none';
-      return;
-    }
-    $('catalogPreviewText').textContent = `Found ${pendingCatalogRows.length} items. What should we do with them?`;
-    $('catalogChoice').style.display = 'block';
-  };
-  if(isXlsx) reader.readAsArrayBuffer(file);
-  else reader.readAsText(file);
-});
-
-$('catalogSuggestBtn').addEventListener('click', async () => {
-  try{
-    const res = await apiFetch('/api/catalog', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(pendingCatalogRows.map(r => ({ name: r.name, qty: r.qty })))
-    });
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.error || 'Upload failed');
-    catalog = pendingCatalogRows.map(r => ({ name: r.name, qty: r.qty }));
-    updateCatalogOptions();
-    $('catalogStatus').textContent = `Saved ${data.count} name suggestions.`;
-    showToast(`Saved ${data.count} name suggestions`);
-    resetCatalogUpload();
-  }catch(err){
-    $('catalogStatus').textContent = 'Could not save suggestions.';
-  }
-});
-
-$('catalogAddLogBtn').addEventListener('click', async () => {
-  if(!confirm(`Create ${pendingCatalogRows.length} log entries from this file? Each gets its own sticker number automatically.`)) return;
-  try{
-    const res = await apiFetch('/api/items/bulk', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(pendingCatalogRows)
-    });
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.error || 'Import failed');
-    $('catalogStatus').textContent = `Created ${data.count} log entries — anyone can open them from the Log tab to add a photo and finish up.`;
-    showToast(`Created ${data.count} log entries`);
-    resetCatalogUpload();
-    await loadData();
-  }catch(err){
-    $('catalogStatus').textContent = 'Could not create log entries.';
-  }
-});
-
-function parseTeamCsv(text){
-  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  if(!lines.length) return [];
-  const startIdx = /^team/i.test(lines[0]) ? 1 : 0;
-  const clean = s => (s || '').trim().replace(/^"|"$/g, '');
-  const out = [];
-  for(let i = startIdx; i < lines.length; i++){
-    const name = clean(lines[i].split(',')[0]);
-    if(name) out.push(name);
-  }
-  return out;
-}
-
-async function parseTeamXlsx(buffer){
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(buffer);
-  const ws = wb.worksheets[0];
-  const out = [];
-  ws.eachRow((row, rowNumber) => {
-    const name = String(row.values[1] || '').trim();
-    if(!name) return;
-    if(rowNumber === 1 && /^team/i.test(name)) return;
-    out.push(name);
+$('adminAddTeamBtn').addEventListener('click', async () => {
+  const name = $('adminNewTeamInput').value.trim();
+  if(!name) return;
+  await apiFetch('/api/teams/add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ name })
   });
-  return out;
-}
-
-$('downloadTeamTemplateBtn').addEventListener('click', () => {
-  downloadStyledExcel('team-list-template.xlsx', ['Team Name'], [['Team A'], ['Team B']]);
+  if(!teamList.includes(name)) teamList.push(name);
+  $('adminNewTeamInput').value = '';
+  renderAdminTeamList();
+  showToast(`Added "${name}"`);
 });
 
-$('teamListFile').addEventListener('change', e => {
-  const file = e.target.files[0];
-  if(!file) return;
-  const isXlsx = /\.xlsx$/i.test(file.name);
-  const reader = new FileReader();
-  reader.onload = async ev => {
-    const names = isXlsx ? await parseTeamXlsx(ev.target.result) : parseTeamCsv(ev.target.result);
-    $('teamListFile').value = '';
-    if(!names.length){
-      $('teamListStatus').textContent = 'No team names found in that file.';
-      return;
-    }
-    try{
-      const res = await apiFetch('/api/teams', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(names)
-      });
-      const data = await res.json();
-      if(!res.ok) throw new Error(data.error || 'Upload failed');
-      teamList = names;
-      renderLoginTeamChips();
-      $('teamListStatus').textContent = `Saved ${data.count} team${data.count === 1 ? '' : 's'}.`;
-      showToast(`Saved ${data.count} team${data.count === 1 ? '' : 's'}`);
-    }catch(err){
-      $('teamListStatus').textContent = 'Could not save the team list.';
-    }
-  };
-  if(isXlsx) reader.readAsArrayBuffer(file);
-  else reader.readAsText(file);
+function renderAdminLocList(){
+  const el = $('adminLocList');
+  el.innerHTML = locations.map(l => `
+    <div class="item">
+      <div class="body"><div class="name">${escHtml(l)}</div></div>
+      <button class="edit-btn del-loc-btn" data-name="${escHtml(l)}">&times;</button>
+    </div>
+  `).join('') || `<div class="empty-state">No locations yet.</div>`;
+  el.querySelectorAll('.del-loc-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if(!confirm(`Remove location "${btn.dataset.name}"?`)) return;
+      await apiFetch(`/api/locations/${encodeURIComponent(btn.dataset.name)}`, { method: 'DELETE' });
+      locations = locations.filter(l => l !== btn.dataset.name);
+      renderAdminLocList();
+    });
+  });
+}
+
+$('adminAddLocBtn').addEventListener('click', async () => {
+  const name = $('adminNewLocInput').value.trim();
+  if(!name) return;
+  await apiFetch('/api/locations/add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ name })
+  });
+  if(!locations.includes(name)) locations.push(name);
+  $('adminNewLocInput').value = '';
+  renderAdminLocList();
+  showToast(`Added "${name}"`);
 });
 
 if(session && session.token){
-  showApp();
-  loadData();
+  Promise.all([loadTeams(), loadLocationsList()]).then(() => {
+    if(defaultLocations.length === 0 || !defaultOwner) enterSetup();
+    showApp();
+    loadData();
+  });
 } else {
   showLoginScreen();
 }
