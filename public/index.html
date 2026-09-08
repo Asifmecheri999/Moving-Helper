@@ -718,8 +718,8 @@ $('settingsSaveBtn').addEventListener('click', async () => {
   localStorage.setItem(scopedKey('tagger-defaultlocations'), JSON.stringify(defaultLocations));
   renderAddLocationChips();
   updateHomeLabel();
+  initSettingsPickers();
   showToast('Settings saved');
-  showView('home');
 });
 
 async function submitAuth(){
