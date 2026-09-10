@@ -309,10 +309,9 @@
         <button type="button" class="chip" data-value="Accessory">Accessory</button>
       </div>
 
-      <label>Packing condition <span class="req">*</span></label>
+      <label>Packing condition <span class="req">*</span> <span style="font-weight:400; color:#8a94a6;">(Packed = in a box or bag)</span></label>
       <div class="chip-group" id="itemPackingGroup">
-        <button type="button" class="chip" data-value="In box">In box</button>
-        <button type="button" class="chip" data-value="Bag">Bag</button>
+        <button type="button" class="chip" data-value="Packed">Packed</button>
         <button type="button" class="chip" data-value="Unpacked">Unpacked</button>
       </div>
 
@@ -845,7 +844,10 @@ function setupChipGroup(groupId, defaultValue){
   return { get: () => value, set: v => { value = v; render(); } };
 }
 const typeChip = setupChipGroup('itemTypeGroup', 'Equipment');
-const packingChip = setupChipGroup('itemPackingGroup', 'In box');
+const packingChip = setupChipGroup('itemPackingGroup', 'Packed');
+function packingChipValue(raw){
+  return (raw === 'In box' || raw === 'Bag') ? 'Packed' : (raw || 'Packed');
+}
 
 async function loadData(){
   let cached = [];
@@ -1164,7 +1166,7 @@ function startEdit(sticker){
   $('stickerNum').value = item.sticker;
   $('itemName').value = item.name;
   typeChip.set(item.type || 'Equipment');
-  packingChip.set(item.packing || 'In box');
+  packingChip.set(packingChipValue(item.packing));
   $('itemQty').value = item.qty;
   $('itemLocDetail').value = item.locationDetail || '';
   $('itemDestDetail').value = item.destinationDetail || '';
@@ -1187,7 +1189,7 @@ function resetForm(){
   $('itemName').value = '';
   $('itemQty').value = 1;
   typeChip.set('Equipment');
-  packingChip.set('In box');
+  packingChip.set('Packed');
   $('itemLocDetail').value = defaultLocDetail;
   $('itemDestDetail').value = '';
   $('itemComments').value = '';
