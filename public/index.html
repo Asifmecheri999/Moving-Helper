@@ -354,8 +354,9 @@
     </div>
     <div style="display:flex; gap:10px;">
       <button class="export-btn" id="exportBtn" style="flex:1;">Export Excel</button>
-      <button class="export-btn" id="selectModeBtn" style="flex:1;">Select</button>
+      <button class="export-btn" id="shareBtn" style="flex:1;">Share</button>
     </div>
+    <button class="export-btn" id="selectModeBtn">Select</button>
     <div id="bulkActionBar" style="display:none; margin-bottom:12px;">
       <button class="delete-btn" id="bulkDeleteBtn" style="margin-top:0;" disabled>Delete selected (0)</button>
     </div>
@@ -364,7 +365,10 @@
 
   <div id="checkinView" style="display:none;">
     <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Home</a>
-    <button class="export-btn" id="exportCheckinBtn">Export receiving list (Excel)</button>
+    <div style="display:flex; gap:10px;">
+      <button class="export-btn" id="exportCheckinBtn" style="flex:1;">Export receiving list (Excel)</button>
+      <button class="export-btn" id="shareCheckinBtn" style="flex:1;">Share</button>
+    </div>
 
     <div class="card">
       <div id="checkinStatus" style="font-size:12px; color:#8a8a80;">No items logged yet.</div>
@@ -1371,7 +1375,7 @@ function renderCheckinLocFilters(){
   });
 }
 
-async function downloadStyledExcel(filename, headers, rows, textCols = [], photoCol = -1, columnOptions = {}){
+async function buildStyledExcelBlob(headers, rows, textCols = [], photoCol = -1, columnOptions = {}){
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Sheet1');
   const headerRow = ws.addRow(headers);
@@ -1412,7 +1416,11 @@ async function downloadStyledExcel(filename, headers, rows, textCols = [], photo
   });
   ws.columns.forEach((col, ci) => { col.width = ci === photoCol ? 10 : 18; });
   const buffer = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buffer], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  return new Blob([buffer], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+
+async function downloadStyledExcel(filename, headers, rows, textCols = [], photoCol = -1, columnOptions = {}){
+  const blob = await buildStyledExcelBlob(headers, rows, textCols, photoCol, columnOptions);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -1421,8 +1429,22 @@ async function downloadStyledExcel(filename, headers, rows, textCols = [], photo
   URL.revokeObjectURL(url);
 }
 
-$('exportBtn').addEventListener('click', async () => {
-  showToast('Preparing Excel file...');
+async function shareStyledExcel(filename, headers, rows, textCols = [], photoCol = -1, columnOptions = {}){
+  const blob = await buildStyledExcelBlob(headers, rows, textCols, photoCol, columnOptions);
+  const file = new File([blob], filename, { type: blob.type });
+  if(navigator.canShare && navigator.canShare({ files: [file] })){
+    try{
+      await navigator.share({ files: [file], title: filename });
+      return true;
+    }catch(e){
+      if(e.name === 'AbortError') return true;
+      return false;
+    }
+  }
+  return false;
+}
+
+async function buildLogExportData(){
   const headers = ['Sticker','Name','Type','Packing','Qty','Current location','Exact Location','Location at A9','Team','Requirement','Entered By','Timestamp','Comments','Photo'];
   const rows = await Promise.all(teamScopedItems().map(async i => [
     i.sticker, i.name, i.type, i.packing || '', i.qty, i.location, i.locationDetail || '',
@@ -1430,15 +1452,30 @@ $('exportBtn').addEventListener('click', async () => {
     i.comments || '',
     await toBase64DataUrl(i.photo)
   ]));
+  return { headers, rows };
+}
+
+$('exportBtn').addEventListener('click', async () => {
+  showToast('Preparing Excel file...');
+  const { headers, rows } = await buildLogExportData();
   downloadStyledExcel('item-tags.xlsx', headers, rows, [0], headers.length - 1);
+});
+
+$('shareBtn').addEventListener('click', async () => {
+  showToast('Preparing Excel file...');
+  const { headers, rows } = await buildLogExportData();
+  const shared = await shareStyledExcel('item-tags.xlsx', headers, rows, [0], headers.length - 1);
+  if(!shared){
+    showToast('Sharing not supported here — downloading instead');
+    downloadStyledExcel('item-tags.xlsx', headers, rows, [0], headers.length - 1);
+  }
 });
 
 function isQtyMismatch(i){
   return i.arrived && i.receivedQty !== undefined && String(i.receivedQty) !== String(i.qty);
 }
 
-$('exportCheckinBtn').addEventListener('click', async () => {
-  showToast('Preparing Excel file...');
+async function buildCheckinExportData(){
   const headers = ['Sticker','Name','Expected Qty','Received Qty','Status','Qty Flag','Condition','Checked At','Entered By','Comments','Photo'];
   const rows = await Promise.all(teamScopedItems().map(async i => [
     i.sticker, i.name, i.qty,
@@ -1451,7 +1488,23 @@ $('exportCheckinBtn').addEventListener('click', async () => {
     i.comments || '',
     await toBase64DataUrl(i.photo)
   ]));
+  return { headers, rows };
+}
+
+$('exportCheckinBtn').addEventListener('click', async () => {
+  showToast('Preparing Excel file...');
+  const { headers, rows } = await buildCheckinExportData();
   downloadStyledExcel('receiving-list.xlsx', headers, rows, [0], headers.length - 1);
+});
+
+$('shareCheckinBtn').addEventListener('click', async () => {
+  showToast('Preparing Excel file...');
+  const { headers, rows } = await buildCheckinExportData();
+  const shared = await shareStyledExcel('receiving-list.xlsx', headers, rows, [0], headers.length - 1);
+  if(!shared){
+    showToast('Sharing not supported here — downloading instead');
+    downloadStyledExcel('receiving-list.xlsx', headers, rows, [0], headers.length - 1);
+  }
 });
 
 function renderCheckinStatus(){
