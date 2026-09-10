@@ -255,6 +255,7 @@
     <button class="menu-btn" data-view="add">Add item</button>
     <button class="menu-btn" data-view="list">Log</button>
     <button class="menu-btn" data-view="checkin">A9 Check-in</button>
+    <button class="menu-btn" id="downloadTemplateBtn">Download blank template</button>
     <button class="menu-btn" data-view="settings">Settings</button>
     <button class="menu-btn" data-view="admin" id="adminMenuBtn" style="display:none;">Admin</button>
     <button class="menu-btn logout" id="homeLogoutBtn">Log out</button>
@@ -301,6 +302,9 @@
       <input type="text" id="itemLocDetail" placeholder="e.g. Rack 3, Cabinet B">
       <div class="chip-group" id="locDetailChips" style="margin-top:8px;"></div>
 
+      <label>Comments</label>
+      <textarea id="itemComments" rows="3" placeholder="Anything worth noting about this item" style="width:100%; box-sizing:border-box; padding:12px; border-radius:9px; border:1.5px solid var(--line); font-size:14.5px; font-family:inherit; resize:vertical;"></textarea>
+
       <label>Type <span class="req">*</span></label>
       <div class="chip-group" id="itemTypeGroup">
         <button type="button" class="chip" data-value="Equipment">Equipment</button>
@@ -314,9 +318,6 @@
         <button type="button" class="chip" data-value="Packed">Packed</button>
         <button type="button" class="chip" data-value="Unpacked">Unpacked</button>
       </div>
-
-      <label>Comments</label>
-      <textarea id="itemComments" rows="3" placeholder="Anything worth noting about this item" style="width:100%; box-sizing:border-box; padding:12px; border-radius:9px; border:1.5px solid var(--line); font-size:14.5px; font-family:inherit; resize:vertical;"></textarea>
 
       <label>Location at A9 (leave blank if unknown)</label>
       <select id="itemDestDetail">
@@ -934,13 +935,14 @@ function renderAddTeamChips(){
 function renderLocDetailChips(){
   const el = $('locDetailChips');
   const seen = new Set();
-  const recent = [];
+  const all = [];
   for(const i of items){
     const d = (i.locationDetail || '').trim();
-    if(d && !seen.has(d)){ seen.add(d); recent.push(d); }
-    if(recent.length >= 10) break;
+    if(d && !seen.has(d)){ seen.add(d); all.push(d); }
   }
   const current = $('itemLocDetail').value.trim();
+  const query = current.toLowerCase();
+  const recent = (query ? all.filter(d => d.toLowerCase().includes(query)) : all).slice(0, 10);
   el.innerHTML = recent.map(d => `<button type="button" class="chip" data-value="${escHtml(d)}">${escHtml(d)}</button>`).join('');
   el.querySelectorAll('.chip').forEach(c => {
     c.classList.toggle('on', c.dataset.value === current);
@@ -1375,7 +1377,7 @@ function renderCheckinLocFilters(){
   });
 }
 
-async function buildStyledExcelBlob(headers, rows, textCols = [], photoCol = -1, columnOptions = {}){
+async function buildStyledExcelBlob(headers, rows, textCols = [], photoCols = [], columnOptions = {}){
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Sheet1');
   const headerRow = ws.addRow(headers);
@@ -1384,26 +1386,30 @@ async function buildStyledExcelBlob(headers, rows, textCols = [], photoCol = -1,
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     cell.alignment = { horizontal: 'center', vertical: 'middle' };
   });
+  const photoColSet = new Set(Array.isArray(photoCols) ? photoCols : (photoCols >= 0 ? [photoCols] : []));
   rows.forEach((r, ri) => {
     const rowValues = r.slice();
-    let photoDataUrl = null;
-    if(photoCol >= 0){
-      photoDataUrl = rowValues[photoCol];
-      rowValues[photoCol] = '';
-    }
+    const photoDataByCol = {};
+    photoColSet.forEach(ci => {
+      photoDataByCol[ci] = rowValues[ci];
+      rowValues[ci] = '';
+    });
     const row = ws.addRow(rowValues);
     row.eachCell({ includeEmpty: true }, cell => {
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
     });
     textCols.forEach(ci => { row.getCell(ci + 1).numFmt = '@'; });
-    if(photoCol >= 0){
+    if(photoColSet.size){
       row.height = 46;
-      if(photoDataUrl){
-        try{
-          const imgId = wb.addImage({ base64: photoDataUrl, extension: 'jpeg' });
-          ws.addImage(imgId, { tl: { nativeCol: photoCol, nativeColOff: 38100, nativeRow: ri + 1, nativeRowOff: 19050 }, ext: { width: 60, height: 42 }, editAs: 'oneCell' });
-        }catch(e){}
-      }
+      photoColSet.forEach(ci => {
+        const photoDataUrl = photoDataByCol[ci];
+        if(photoDataUrl){
+          try{
+            const imgId = wb.addImage({ base64: photoDataUrl, extension: 'jpeg' });
+            ws.addImage(imgId, { tl: { nativeCol: ci, nativeColOff: 38100, nativeRow: ri + 1, nativeRowOff: 19050 }, ext: { width: 60, height: 42 }, editAs: 'oneCell' });
+          }catch(e){}
+        }
+      });
     }
   });
   const dropdownRows = Math.max(rows.length + 1, 500);
@@ -1414,13 +1420,13 @@ async function buildStyledExcelBlob(headers, rows, textCols = [], photoCol = -1,
       ws.getCell(r, col).dataValidation = { type: 'list', allowBlank: true, formulae: [formula] };
     }
   });
-  ws.columns.forEach((col, ci) => { col.width = ci === photoCol ? 10 : 18; });
+  ws.columns.forEach((col, ci) => { col.width = photoColSet.has(ci) ? 10 : 18; });
   const buffer = await wb.xlsx.writeBuffer();
   return new Blob([buffer], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
 
-async function downloadStyledExcel(filename, headers, rows, textCols = [], photoCol = -1, columnOptions = {}){
-  const blob = await buildStyledExcelBlob(headers, rows, textCols, photoCol, columnOptions);
+async function downloadStyledExcel(filename, headers, rows, textCols = [], photoCols = [], columnOptions = {}){
+  const blob = await buildStyledExcelBlob(headers, rows, textCols, photoCols, columnOptions);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -1429,8 +1435,8 @@ async function downloadStyledExcel(filename, headers, rows, textCols = [], photo
   URL.revokeObjectURL(url);
 }
 
-async function shareStyledExcel(filename, headers, rows, textCols = [], photoCol = -1, columnOptions = {}){
-  const blob = await buildStyledExcelBlob(headers, rows, textCols, photoCol, columnOptions);
+async function shareStyledExcel(filename, headers, rows, textCols = [], photoCols = [], columnOptions = {}){
+  const blob = await buildStyledExcelBlob(headers, rows, textCols, photoCols, columnOptions);
   const file = new File([blob], filename, { type: blob.type });
   if(navigator.canShare && navigator.canShare({ files: [file] })){
     try{
@@ -1444,66 +1450,108 @@ async function shareStyledExcel(filename, headers, rows, textCols = [], photoCol
   return false;
 }
 
+function itemPhotoList(i){
+  return (i.photos && i.photos.length) ? i.photos : (i.photo ? [i.photo] : []);
+}
+
 async function buildLogExportData(){
-  const headers = ['Sticker','Name','Type','Packing','Qty','Current location','Exact Location','Location at A9','Team','Requirement','Entered By','Timestamp','Comments','Photo'];
-  const rows = await Promise.all(teamScopedItems().map(async i => [
-    i.sticker, i.name, i.type, i.packing || '', i.qty, i.location, i.locationDetail || '',
-    i.destinationDetail || '', i.owner || '', i.flag === 'green' ? 'Required' : (i.flag === 'red' ? 'Not required' : ''), i.createdBy || '', i.ts,
-    i.comments || '',
-    await toBase64DataUrl(i.photo)
-  ]));
-  return { headers, rows };
+  const scoped = teamScopedItems().slice().sort((a, b) => stickerSortValue(a.sticker) - stickerSortValue(b.sticker));
+  const maxPhotos = Math.max(1, ...scoped.map(i => itemPhotoList(i).length));
+  const baseHeaders = ['Sticker','Name','Type','Packing','Qty','Current location','Exact Location','Location at A9','Team','Entered By','Timestamp','Comments'];
+  const photoHeaders = Array.from({length: maxPhotos}, (_, idx) => `Photo ${idx + 1}`);
+  const headers = [...baseHeaders, ...photoHeaders];
+  const photoCols = photoHeaders.map((_, idx) => baseHeaders.length + idx);
+  const rows = await Promise.all(scoped.map(async i => {
+    const photoList = itemPhotoList(i);
+    const photoCells = await Promise.all(Array.from({length: maxPhotos}, (_, idx) => toBase64DataUrl(photoList[idx] || null)));
+    return [
+      i.sticker, i.name, i.type, i.packing || '', i.qty, i.location, i.locationDetail || '',
+      i.destinationDetail || '', i.owner || '', i.createdBy || '', i.ts,
+      i.comments || '',
+      ...photoCells
+    ];
+  }));
+  return { headers, rows, photoCols };
 }
 
 $('exportBtn').addEventListener('click', async () => {
   showToast('Preparing Excel file...');
-  const { headers, rows } = await buildLogExportData();
-  downloadStyledExcel('item-tags.xlsx', headers, rows, [0], headers.length - 1);
+  const { headers, rows, photoCols } = await buildLogExportData();
+  downloadStyledExcel('item-tags.xlsx', headers, rows, [0], photoCols);
 });
 
 $('shareBtn').addEventListener('click', async () => {
   showToast('Preparing Excel file...');
-  const { headers, rows } = await buildLogExportData();
-  const shared = await shareStyledExcel('item-tags.xlsx', headers, rows, [0], headers.length - 1);
+  const { headers, rows, photoCols } = await buildLogExportData();
+  const shared = await shareStyledExcel('item-tags.xlsx', headers, rows, [0], photoCols);
   if(!shared){
     showToast('Sharing not supported here — downloading instead');
-    downloadStyledExcel('item-tags.xlsx', headers, rows, [0], headers.length - 1);
+    downloadStyledExcel('item-tags.xlsx', headers, rows, [0], photoCols);
   }
 });
+
+function roomOptions(){
+  return Array.from($('itemDestDetail').options).map(o => o.value).filter(Boolean);
+}
+
+async function downloadBlankTemplate(){
+  showToast('Preparing template...');
+  const headers = ['Sticker','Name','Type','Packing','Qty','Current location','Exact Location','Location at A9','Team','Comments'];
+  const columnOptions = {
+    2: ['Equipment','Tool','Consumables','Accessory'],
+    3: ['Packed','Unpacked'],
+    7: roomOptions()
+  };
+  if(defaultLocations.length) columnOptions[5] = defaultLocations;
+  const myTeams = (session && session.teams) || [];
+  if(myTeams.length) columnOptions[8] = myTeams;
+  await downloadStyledExcel('item-tags-template.xlsx', headers, [], [0], [], columnOptions);
+}
+
+$('downloadTemplateBtn').addEventListener('click', downloadBlankTemplate);
 
 function isQtyMismatch(i){
   return i.arrived && i.receivedQty !== undefined && String(i.receivedQty) !== String(i.qty);
 }
 
 async function buildCheckinExportData(){
-  const headers = ['Sticker','Name','Expected Qty','Received Qty','Status','Qty Flag','Condition','Checked At','Entered By','Comments','Photo'];
-  const rows = await Promise.all(teamScopedItems().map(async i => [
-    i.sticker, i.name, i.qty,
-    i.arrived ? (i.receivedQty ?? '') : '',
-    i.arrived ? 'Received' : 'Pending to receive',
-    isQtyMismatch(i) ? 'MISMATCH' : '',
-    i.arrived ? (i.condition || '') : '',
-    i.arrived ? (i.checkedAt || '') : '',
-    i.createdBy || '',
-    i.comments || '',
-    await toBase64DataUrl(i.photo)
-  ]));
-  return { headers, rows };
+  const scoped = teamScopedItems().slice().sort((a, b) => stickerSortValue(a.sticker) - stickerSortValue(b.sticker));
+  const maxPhotos = Math.max(1, ...scoped.map(i => itemPhotoList(i).length));
+  const baseHeaders = ['Sticker','Name','Expected Qty','Received Qty','Status','Qty Flag','Condition','Checked At','Entered By','Comments'];
+  const photoHeaders = Array.from({length: maxPhotos}, (_, idx) => `Photo ${idx + 1}`);
+  const headers = [...baseHeaders, ...photoHeaders];
+  const photoCols = photoHeaders.map((_, idx) => baseHeaders.length + idx);
+  const rows = await Promise.all(scoped.map(async i => {
+    const photoList = itemPhotoList(i);
+    const photoCells = await Promise.all(Array.from({length: maxPhotos}, (_, idx) => toBase64DataUrl(photoList[idx] || null)));
+    return [
+      i.sticker, i.name, i.qty,
+      i.arrived ? (i.receivedQty ?? '') : '',
+      i.arrived ? 'Received' : 'Pending to receive',
+      isQtyMismatch(i) ? 'MISMATCH' : '',
+      i.arrived ? (i.condition || '') : '',
+      i.arrived ? (i.checkedAt || '') : '',
+      i.createdBy || '',
+      i.comments || '',
+      ...photoCells
+    ];
+  }));
+  return { headers, rows, photoCols };
 }
 
 $('exportCheckinBtn').addEventListener('click', async () => {
   showToast('Preparing Excel file...');
-  const { headers, rows } = await buildCheckinExportData();
-  downloadStyledExcel('receiving-list.xlsx', headers, rows, [0], headers.length - 1);
+  const { headers, rows, photoCols } = await buildCheckinExportData();
+  downloadStyledExcel('receiving-list.xlsx', headers, rows, [0], photoCols);
 });
 
 $('shareCheckinBtn').addEventListener('click', async () => {
   showToast('Preparing Excel file...');
-  const { headers, rows } = await buildCheckinExportData();
-  const shared = await shareStyledExcel('receiving-list.xlsx', headers, rows, [0], headers.length - 1);
+  const { headers, rows, photoCols } = await buildCheckinExportData();
+  const shared = await shareStyledExcel('receiving-list.xlsx', headers, rows, [0], photoCols);
   if(!shared){
     showToast('Sharing not supported here — downloading instead');
-    downloadStyledExcel('receiving-list.xlsx', headers, rows, [0], headers.length - 1);
+    downloadStyledExcel('receiving-list.xlsx', headers, rows, [0], photoCols);
   }
 });
 
