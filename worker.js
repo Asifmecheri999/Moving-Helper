@@ -233,7 +233,12 @@ async function updateItem(sticker, request, env, session) {
 }
 
 async function deleteItem(sticker, env, session) {
-  const row = await env.DB.prepare('SELECT photo_key, photos, created_by FROM items WHERE sticker = ?').bind(sticker).first();
+  let row;
+  try {
+    row = await env.DB.prepare('SELECT photo_key, photos, created_by FROM items WHERE sticker = ?').bind(sticker).first();
+  } catch (e) {
+    row = await env.DB.prepare('SELECT photo_key, created_by FROM items WHERE sticker = ?').bind(sticker).first();
+  }
   if (!row) return jsonResponse({ error: 'not found' }, 404);
   if (session.role !== 'admin' && row.created_by !== session.username) {
     return jsonResponse({ error: 'forbidden' }, 403);
