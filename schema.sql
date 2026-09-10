@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS items (
   owner TEXT,
   flag TEXT,
   photo_key TEXT,
+  photos TEXT,
+  comments TEXT,
   ts TEXT,
   received_qty INTEGER,
   condition TEXT,

@@ -40,7 +40,18 @@ async function getSession(request, env) {
   return { ...user, teams: parseTeams(user.teams) };
 }
 
+function parsePhotos(raw) {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) {
+    return [];
+  }
+}
+
 function rowToItem(row) {
+  const photos = parsePhotos(row.photos);
   return {
     sticker: row.sticker,
     name: row.name,
@@ -53,7 +64,9 @@ function rowToItem(row) {
     destinationDetail: row.destination_detail,
     owner: row.owner,
     flag: row.flag,
-    photo: row.photo_key,
+    photo: row.photo_key || photos[0] || null,
+    photos: photos.length ? photos : (row.photo_key ? [row.photo_key] : []),
+    comments: row.comments || '',
     ts: row.ts,
     receivedQty: row.received_qty,
     condition: row.condition,
@@ -108,21 +121,39 @@ async function createItem(request, env, session) {
   let body;
   try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
   if (!body.sticker || !body.name) return jsonResponse({ error: 'sticker and name required' }, 400);
+  const photos = Array.isArray(body.photos) ? body.photos.filter(Boolean) : (body.photo ? [body.photo] : []);
+  const photosJson = photos.length ? JSON.stringify(photos) : null;
+  const comments = body.comments || '';
   try {
     await env.DB.prepare(
-      `INSERT INTO items (sticker, name, type, packing, qty, location, location_detail, destination, destination_detail, owner, flag, photo_key, ts, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO items (sticker, name, type, packing, qty, location, location_detail, destination, destination_detail, owner, flag, photo_key, photos, comments, ts, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       body.sticker, body.name, body.type || '', body.packing || '', body.qty || 0,
       body.location || '', body.locationDetail || '', body.destination || '', body.destinationDetail || '',
-      body.owner || '', body.flag || '', body.photo || null, body.ts || new Date().toISOString(),
+      body.owner || '', body.flag || '', photos[0] || null, photosJson, comments, body.ts || new Date().toISOString(),
       session.username
     ).run();
   } catch (e) {
     if (String(e.message || e).includes('UNIQUE')) {
       return jsonResponse({ error: 'sticker already used' }, 409);
     }
-    return jsonResponse({ error: String(e.message || e) }, 500);
+    try {
+      await env.DB.prepare(
+        `INSERT INTO items (sticker, name, type, packing, qty, location, location_detail, destination, destination_detail, owner, flag, photo_key, ts, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        body.sticker, body.name, body.type || '', body.packing || '', body.qty || 0,
+        body.location || '', body.locationDetail || '', body.destination || '', body.destinationDetail || '',
+        body.owner || '', body.flag || '', photos[0] || null, body.ts || new Date().toISOString(),
+        session.username
+      ).run();
+    } catch (e2) {
+      if (String(e2.message || e2).includes('UNIQUE')) {
+        return jsonResponse({ error: 'sticker already used' }, 409);
+      }
+      return jsonResponse({ error: String(e2.message || e2) }, 500);
+    }
   }
   return jsonResponse({ ok: true }, 201);
 }
@@ -131,9 +162,35 @@ const UPDATABLE_FIELDS = {
   name: 'name', type: 'type', packing: 'packing', qty: 'qty',
   location: 'location', locationDetail: 'location_detail',
   destination: 'destination', destinationDetail: 'destination_detail',
-  owner: 'owner', flag: 'flag', photo: 'photo_key',
+  owner: 'owner', flag: 'flag', photo: 'photo_key', comments: 'comments',
   receivedQty: 'received_qty', condition: 'condition', checkedAt: 'checked_at', arrived: 'arrived'
 };
+
+function buildUpdateSets(body, opts, includeComments) {
+  const sets = [];
+  const values = [];
+  for (const [key, col] of Object.entries(UPDATABLE_FIELDS)) {
+    if (col === 'comments' && !includeComments) continue;
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      sets.push(`${col} = ?`);
+      values.push(key === 'arrived' ? (body[key] ? 1 : 0) : body[key]);
+    }
+  }
+  if (includeComments && Object.prototype.hasOwnProperty.call(body, 'photos') && Array.isArray(body.photos)) {
+    const photos = body.photos.filter(Boolean);
+    sets.push('photos = ?');
+    values.push(photos.length ? JSON.stringify(photos) : null);
+  }
+  if (opts.isUnclaimed) {
+    sets.push('created_by = ?');
+    values.push(opts.username);
+  }
+  if (opts.newSticker) {
+    sets.push('sticker = ?');
+    values.push(opts.newSticker);
+  }
+  return { sets, values };
+}
 
 async function updateItem(sticker, request, env, session) {
   const existing = await env.DB.prepare('SELECT created_by FROM items WHERE sticker = ?').bind(sticker).first();
@@ -156,25 +213,18 @@ async function updateItem(sticker, request, env, session) {
     }
   }
 
-  const sets = [];
-  const values = [];
-  for (const [key, col] of Object.entries(UPDATABLE_FIELDS)) {
-    if (Object.prototype.hasOwnProperty.call(body, key)) {
-      sets.push(`${col} = ?`);
-      values.push(key === 'arrived' ? (body[key] ? 1 : 0) : body[key]);
-    }
-  }
-  if (isUnclaimed && session.role !== 'admin') {
-    sets.push('created_by = ?');
-    values.push(session.username);
-  }
-  if (newSticker) {
-    sets.push('sticker = ?');
-    values.push(newSticker);
-  }
+  const opts = { isUnclaimed: isUnclaimed && session.role !== 'admin', username: session.username, newSticker };
+  const { sets, values } = buildUpdateSets(body, opts, true);
   if (sets.length === 0) return jsonResponse({ error: 'nothing to update' }, 400);
   values.push(sticker);
-  await env.DB.prepare(`UPDATE items SET ${sets.join(', ')} WHERE sticker = ?`).bind(...values).run();
+  try {
+    await env.DB.prepare(`UPDATE items SET ${sets.join(', ')} WHERE sticker = ?`).bind(...values).run();
+  } catch (e) {
+    const fallback = buildUpdateSets(body, opts, false);
+    if (fallback.sets.length === 0) return jsonResponse({ error: 'nothing to update' }, 400);
+    fallback.values.push(sticker);
+    await env.DB.prepare(`UPDATE items SET ${fallback.sets.join(', ')} WHERE sticker = ?`).bind(...fallback.values).run();
+  }
   return jsonResponse({
     ok: true,
     claimed: isUnclaimed && session.role !== 'admin' ? session.username : undefined,
@@ -183,14 +233,16 @@ async function updateItem(sticker, request, env, session) {
 }
 
 async function deleteItem(sticker, env, session) {
-  const row = await env.DB.prepare('SELECT photo_key, created_by FROM items WHERE sticker = ?').bind(sticker).first();
+  const row = await env.DB.prepare('SELECT photo_key, photos, created_by FROM items WHERE sticker = ?').bind(sticker).first();
   if (!row) return jsonResponse({ error: 'not found' }, 404);
   if (session.role !== 'admin' && row.created_by !== session.username) {
     return jsonResponse({ error: 'forbidden' }, 403);
   }
   await env.DB.prepare('DELETE FROM items WHERE sticker = ?').bind(sticker).run();
-  if (row.photo_key) {
-    try { await env.PHOTOS.delete(row.photo_key); } catch (e) {}
+  const allPhotos = new Set(parsePhotos(row.photos));
+  if (row.photo_key) allPhotos.add(row.photo_key);
+  for (const key of allPhotos) {
+    try { await env.PHOTOS.delete(key); } catch (e) {}
   }
   return jsonResponse({ ok: true });
 }

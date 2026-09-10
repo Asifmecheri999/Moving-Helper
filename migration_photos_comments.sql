@@ -1,0 +1,2 @@
+ALTER TABLE items ADD COLUMN photos TEXT;
+ALTER TABLE items ADD COLUMN comments TEXT;

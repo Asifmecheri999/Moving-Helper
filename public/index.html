@@ -75,13 +75,23 @@
   .save-btn:active, .export-btn:active, .delete-btn:active, .edit-btn:active{
     opacity:0.72;
   }
-  .photo-box{
-    border:1.5px dashed var(--line); border-radius:10px; height:150px;
-    display:flex; align-items:center; justify-content:center; overflow:hidden;
-    position:relative; background:var(--paper); color:#8a8a80; font-size:13px;
+  .photo-tiles{display:flex; gap:10px; overflow-x:auto; padding-bottom:2px;}
+  .photo-tile{
+    position:relative; width:90px; height:90px; border-radius:10px; flex-shrink:0;
+    overflow:hidden; background:var(--paper); border:1.5px solid var(--line);
   }
-  .photo-box img{width:100%; height:100%; object-fit:cover;}
-  .photo-box input{position:absolute; inset:0; opacity:0; cursor:pointer;}
+  .photo-tile img{width:100%; height:100%; object-fit:cover;}
+  .photo-tile .remove-photo{
+    position:absolute; top:4px; right:4px; width:22px; height:22px; border-radius:50%;
+    background:rgba(13,17,23,0.65); color:#fff; border:none; display:flex; align-items:center;
+    justify-content:center; font-size:14px; font-weight:700; line-height:1; padding:0;
+  }
+  .photo-add-tile{
+    width:90px; height:90px; border-radius:10px; flex-shrink:0; border:1.5px dashed var(--line);
+    display:flex; align-items:center; justify-content:center; position:relative;
+    background:var(--paper); color:#8a8a80; font-size:28px; font-weight:300;
+  }
+  .photo-add-tile input{position:absolute; inset:0; opacity:0; cursor:pointer;}
   .flag-row{display:flex; gap:10px;}
   .flag-btn{
     flex:1; padding:14px 8px; border-radius:9px; border:2px solid var(--line);
@@ -257,11 +267,8 @@
         <span>Editing #<span id="editBannerNum"></span></span>
         <a href="#" id="cancelEditLink">Cancel</a>
       </div>
-      <label>Photo</label>
-      <div class="photo-box" id="photoBox">
-        <span id="photoPlaceholder">Tap to take photo</span>
-        <input type="file" accept="image/*" capture="environment" id="photoInput">
-      </div>
+      <label>Photos</label>
+      <div class="photo-tiles" id="photoTiles"></div>
 
       <div class="sticker-row">
         <div>
@@ -272,21 +279,6 @@
 
       <label>Item name <span class="req">*</span></label>
       <input type="text" id="itemName" placeholder="e.g. Bench drill, M4 bolts box">
-
-      <label>Type <span class="req">*</span></label>
-      <div class="chip-group" id="itemTypeGroup">
-        <button type="button" class="chip" data-value="Equipment">Equipment</button>
-        <button type="button" class="chip" data-value="Tool">Tool</button>
-        <button type="button" class="chip" data-value="Consumables">Consumables</button>
-        <button type="button" class="chip" data-value="Accessory">Accessory</button>
-      </div>
-
-      <label>Packing condition <span class="req">*</span></label>
-      <div class="chip-group" id="itemPackingGroup">
-        <button type="button" class="chip" data-value="In box">In box</button>
-        <button type="button" class="chip" data-value="Bag">Bag</button>
-        <button type="button" class="chip" data-value="Unpacked">Unpacked</button>
-      </div>
 
       <label>Quantity</label>
       <div class="qty-row">
@@ -308,6 +300,24 @@
       <label>Exact location if available (rack, cabinet, area name)</label>
       <input type="text" id="itemLocDetail" placeholder="e.g. Rack 3, Cabinet B">
       <div class="chip-group" id="locDetailChips" style="margin-top:8px;"></div>
+
+      <label>Type <span class="req">*</span></label>
+      <div class="chip-group" id="itemTypeGroup">
+        <button type="button" class="chip" data-value="Equipment">Equipment</button>
+        <button type="button" class="chip" data-value="Tool">Tool</button>
+        <button type="button" class="chip" data-value="Consumables">Consumables</button>
+        <button type="button" class="chip" data-value="Accessory">Accessory</button>
+      </div>
+
+      <label>Packing condition <span class="req">*</span></label>
+      <div class="chip-group" id="itemPackingGroup">
+        <button type="button" class="chip" data-value="In box">In box</button>
+        <button type="button" class="chip" data-value="Bag">Bag</button>
+        <button type="button" class="chip" data-value="Unpacked">Unpacked</button>
+      </div>
+
+      <label>Comments</label>
+      <textarea id="itemComments" rows="3" placeholder="Anything worth noting about this item" style="width:100%; box-sizing:border-box; padding:12px; border-radius:9px; border:1.5px solid var(--line); font-size:14.5px; font-family:inherit; resize:vertical;"></textarea>
 
       <label>Location at A9 (leave blank if unknown)</label>
       <select id="itemDestDetail">
@@ -471,7 +481,7 @@
 let items = [];
 let locations = [];
 const A9_LOCATION = 'A9 Warehouse';
-let photoData = null;
+let photoList = [];
 let logSearchQuery = '';
 let logLocationFilter = 'all';
 let logUserFilter = 'all';
@@ -805,8 +815,9 @@ async function toBase64DataUrl(photo){
 
 async function pushItemToServer(item){
   try{
-    const photoKey = await uploadPhotoIfNeeded(item.photo);
-    const payload = { ...item, photo: photoKey };
+    const sourcePhotos = (item.photos && item.photos.length) ? item.photos : (item.photo ? [item.photo] : []);
+    const photoKeys = await Promise.all(sourcePhotos.map(p => uploadPhotoIfNeeded(p)));
+    const payload = { ...item, photo: photoKeys[0] || null, photos: photoKeys };
     delete payload._dirty;
     const res = await apiFetch('/api/items', {
       method: 'POST',
@@ -854,7 +865,7 @@ async function loadData(){
       const migrated = await pushItemToServer(orphan);
       if(migrated) items.unshift(migrated);
     }
-    items.sort((a, b) => b.sticker.localeCompare(a.sticker));
+    items.sort((a, b) => stickerSortValue(b.sticker) - stickerSortValue(a.sticker));
   }catch(e){
     offline = true;
     items = cached;
@@ -942,6 +953,10 @@ async function saveItems(){
   }
 }
 function pad(n){ return String(n).padStart(5,'0'); }
+function stickerSortValue(s){
+  const n = parseInt(s, 10);
+  return isNaN(n) ? -Infinity : n;
+}
 
 function computeNextNum(){
   let maxNum = 0;
@@ -975,27 +990,42 @@ function resizeImage(file, cb){
   reader.readAsDataURL(file);
 }
 
-function setPhotoBox(rawPhoto){
-  photoData = rawPhoto;
-  const displaySrc = photoSrc(rawPhoto);
-  $('photoBox').innerHTML = displaySrc
-    ? `<img src="${displaySrc}"><input type="file" accept="image/*" capture="environment" id="photoInput">`
-    : `<span id="photoPlaceholder">Tap to take photo</span><input type="file" accept="image/*" capture="environment" id="photoInput">`;
+function renderPhotoTiles(){
+  const wrap = $('photoTiles');
+  wrap.innerHTML = photoList.map((p, i) => `
+    <div class="photo-tile">
+      <img src="${photoSrc(p)}">
+      <button type="button" class="remove-photo" data-index="${i}">&times;</button>
+    </div>
+  `).join('') + `
+    <label class="photo-add-tile">
+      +
+      <input type="file" accept="image/*" capture="environment" id="photoInput">
+    </label>
+  `;
+  wrap.querySelectorAll('.remove-photo').forEach(btn => {
+    btn.addEventListener('click', () => {
+      photoList.splice(Number(btn.dataset.index), 1);
+      renderPhotoTiles();
+    });
+  });
   bindPhotoInput();
 }
 
 function bindPhotoInput(){
   const input = document.getElementById('photoInput');
+  if(!input) return;
   input.onchange = e => {
     const file = e.target.files[0];
     if(!file) return;
     resizeImage(file, dataUrl => {
-      setPhotoBox(dataUrl);
+      photoList.push(dataUrl);
+      renderPhotoTiles();
       checkSaveEnabled();
     });
   };
 }
-bindPhotoInput();
+renderPhotoTiles();
 
 $('qtyMinus').addEventListener('click', () => {
   const el = $('itemQty');
@@ -1044,21 +1074,22 @@ $('saveBtn').addEventListener('click', async () => {
     qty: parseInt($('itemQty').value || 0),
     locationDetail,
     destination: A9_LOCATION,
-    destinationDetail: $('itemDestDetail').value
+    destinationDetail: $('itemDestDetail').value,
+    comments: $('itemComments').value.trim()
   };
 
-  let photoKey = photoData;
-  try{ photoKey = await uploadPhotoIfNeeded(photoData); }catch(e){}
+  let photoKeys = photoList;
+  try{ photoKeys = await Promise.all(photoList.map(p => uploadPhotoIfNeeded(p))); }catch(e){}
 
   if(editingSticker){
     const item = items.find(i => i.sticker === editingSticker);
     const prevSticker = item ? item.sticker : editingSticker;
-    if(item) Object.assign(item, fields, { photo: photoKey });
+    if(item) Object.assign(item, fields, { photo: photoKeys[0] || null, photos: photoKeys });
     try{
       const res = await apiFetch(`/api/items/${encodeURIComponent(editingSticker)}`, {
         method: 'PATCH',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ ...fields, photo: photoKey })
+        body: JSON.stringify({ ...fields, photo: photoKeys[0] || null, photos: photoKeys })
       });
       if(res.status === 409){
         if(item) item.sticker = prevSticker;
@@ -1081,7 +1112,7 @@ $('saveBtn').addEventListener('click', async () => {
     resetForm();
     showView('list');
   } else {
-    const item = { sticker: stickerVal, ...fields, location: itemLocationValue, owner: itemTeamValue, photo: photoKey, ts: new Date().toISOString(), createdBy: session.username };
+    const item = { sticker: stickerVal, ...fields, location: itemLocationValue, owner: itemTeamValue, photo: photoKeys[0] || null, photos: photoKeys, ts: new Date().toISOString(), createdBy: session.username };
     try{
       const res = await apiFetch('/api/items', {
         method: 'POST',
@@ -1137,7 +1168,9 @@ function startEdit(sticker){
   $('itemQty').value = item.qty;
   $('itemLocDetail').value = item.locationDetail || '';
   $('itemDestDetail').value = item.destinationDetail || '';
-  setPhotoBox(item.photo || null);
+  $('itemComments').value = item.comments || '';
+  photoList = (item.photos && item.photos.length) ? [...item.photos] : (item.photo ? [item.photo] : []);
+  renderPhotoTiles();
   $('editBanner').style.display = 'flex';
   $('editBannerNum').textContent = item.sticker;
   $('saveBtn').textContent = 'Update item';
@@ -1157,7 +1190,9 @@ function resetForm(){
   packingChip.set('In box');
   $('itemLocDetail').value = defaultLocDetail;
   $('itemDestDetail').value = '';
-  setPhotoBox(null);
+  $('itemComments').value = '';
+  photoList = [];
+  renderPhotoTiles();
   setNextStickerNum();
   $('editBanner').style.display = 'none';
   $('saveBtn').textContent = 'Save item';
@@ -1247,7 +1282,7 @@ function renderList(){
   list.innerHTML = filtered.map(i => `
     <div class="item">
       ${selectMode ? (canDelete(i) ? `<input type="checkbox" class="select-check" data-sticker="${escHtml(i.sticker)}" ${selectedStickers.has(i.sticker) ? 'checked' : ''}>` : `<span style="width:20px; flex-shrink:0;"></span>`) : ''}
-      ${i.photo ? `<img class="thumb" src="${photoSrc(i.photo)}" data-lightbox="${escHtml(photoSrc(i.photo))}">` : `<div class="thumb empty">no photo</div>`}
+      ${i.photo ? `<img class="thumb" loading="lazy" src="${photoSrc(i.photo)}" data-lightbox="${escHtml(photoSrc(i.photo))}">` : `<div class="thumb empty">no photo</div>`}
       <div class="body">
         <div class="top">
           <span class="num">#${i.sticker}</span>
@@ -1360,7 +1395,7 @@ async function downloadStyledExcel(filename, headers, rows, textCols = [], photo
       if(photoDataUrl){
         try{
           const imgId = wb.addImage({ base64: photoDataUrl, extension: 'jpeg' });
-          ws.addImage(imgId, { tl: { col: photoCol, row: ri + 1 }, ext: { width: 55, height: 55 } });
+          ws.addImage(imgId, { tl: { nativeCol: photoCol, nativeColOff: 38100, nativeRow: ri + 1, nativeRowOff: 19050 }, ext: { width: 60, height: 42 }, editAs: 'oneCell' });
         }catch(e){}
       }
     }
@@ -1386,10 +1421,11 @@ async function downloadStyledExcel(filename, headers, rows, textCols = [], photo
 
 $('exportBtn').addEventListener('click', async () => {
   showToast('Preparing Excel file...');
-  const headers = ['Sticker','Name','Type','Packing','Qty','Current location','Exact Location','Location at A9','Team','Requirement','Entered By','Timestamp','Photo'];
+  const headers = ['Sticker','Name','Type','Packing','Qty','Current location','Exact Location','Location at A9','Team','Requirement','Entered By','Timestamp','Comments','Photo'];
   const rows = await Promise.all(teamScopedItems().map(async i => [
     i.sticker, i.name, i.type, i.packing || '', i.qty, i.location, i.locationDetail || '',
     i.destinationDetail || '', i.owner || '', i.flag === 'green' ? 'Required' : (i.flag === 'red' ? 'Not required' : ''), i.createdBy || '', i.ts,
+    i.comments || '',
     await toBase64DataUrl(i.photo)
   ]));
   downloadStyledExcel('item-tags.xlsx', headers, rows, [0], headers.length - 1);
@@ -1401,7 +1437,7 @@ function isQtyMismatch(i){
 
 $('exportCheckinBtn').addEventListener('click', async () => {
   showToast('Preparing Excel file...');
-  const headers = ['Sticker','Name','Expected Qty','Received Qty','Status','Qty Flag','Condition','Checked At','Entered By','Photo'];
+  const headers = ['Sticker','Name','Expected Qty','Received Qty','Status','Qty Flag','Condition','Checked At','Entered By','Comments','Photo'];
   const rows = await Promise.all(teamScopedItems().map(async i => [
     i.sticker, i.name, i.qty,
     i.arrived ? (i.receivedQty ?? '') : '',
@@ -1410,6 +1446,7 @@ $('exportCheckinBtn').addEventListener('click', async () => {
     i.arrived ? (i.condition || '') : '',
     i.arrived ? (i.checkedAt || '') : '',
     i.createdBy || '',
+    i.comments || '',
     await toBase64DataUrl(i.photo)
   ]));
   downloadStyledExcel('receiving-list.xlsx', headers, rows, [0], headers.length - 1);
@@ -1452,7 +1489,7 @@ function renderCheckinList(){
   }
   list.innerHTML = filtered.map(i => `
     <div class="item checkin-match" data-sticker="${escHtml(i.sticker)}" style="cursor:pointer;">
-      ${i.photo ? `<img class="thumb" src="${photoSrc(i.photo)}" data-lightbox="${escHtml(photoSrc(i.photo))}">` : `<div class="thumb empty">no photo</div>`}
+      ${i.photo ? `<img class="thumb" loading="lazy" src="${photoSrc(i.photo)}" data-lightbox="${escHtml(photoSrc(i.photo))}">` : `<div class="thumb empty">no photo</div>`}
       <div class="body">
         <div class="top">
           <span class="num">#${i.sticker}</span>
@@ -1503,7 +1540,7 @@ function renderCheckinMatches(query){
   $('checkinResult').innerHTML = '';
   matchesEl.innerHTML = matches.map(i => `
     <div class="item checkin-match" data-sticker="${escHtml(i.sticker)}" style="cursor:pointer;">
-      ${i.photo ? `<img class="thumb" src="${photoSrc(i.photo)}" data-lightbox="${escHtml(photoSrc(i.photo))}">` : `<div class="thumb empty">no photo</div>`}
+      ${i.photo ? `<img class="thumb" loading="lazy" src="${photoSrc(i.photo)}" data-lightbox="${escHtml(photoSrc(i.photo))}">` : `<div class="thumb empty">no photo</div>`}
       <div class="body">
         <div class="top">
           <span class="num">#${i.sticker}</span>
@@ -1541,7 +1578,7 @@ function renderCheckinResult(sticker, showBack){
   box.innerHTML = `
     ${showBack ? `<a href="#" class="back-link" id="checkinBackLink" style="margin-bottom:10px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Back to results</a>` : ''}
     <div class="item" style="margin-bottom:0;">
-      ${match.photo ? `<img class="thumb" src="${photoSrc(match.photo)}" data-lightbox="${escHtml(photoSrc(match.photo))}">` : `<div class="thumb empty">no photo</div>`}
+      ${match.photo ? `<img class="thumb" loading="lazy" src="${photoSrc(match.photo)}" data-lightbox="${escHtml(photoSrc(match.photo))}">` : `<div class="thumb empty">no photo</div>`}
       <div class="body">
         <div class="top">
           <span class="num">#${match.sticker}</span>
@@ -1553,6 +1590,8 @@ function renderCheckinResult(sticker, showBack){
         <div class="meta">${match.type} · expected qty ${expectedQty} · from ${match.location}${match.locationDetail ? ' (' + match.locationDetail + ')' : ''} → ${match.destination}${match.destinationDetail ? ' (' + match.destinationDetail + ')' : ''}</div>
       </div>
     </div>
+    ${match.photos && match.photos.length > 1 ? `<div class="photo-tiles" style="margin-top:10px;">${match.photos.map(p => `<div class="photo-tile"><img class="thumb" loading="lazy" src="${photoSrc(p)}" data-lightbox="${escHtml(photoSrc(p))}"></div>`).join('')}</div>` : ''}
+    ${match.comments ? `<div style="margin-top:10px; font-size:13px; color:#6b6a62;"><strong>Comments:</strong> ${escHtml(match.comments)}</div>` : ''}
 
     ${isQtyMismatch(match) ? `<div style="margin-top:10px; padding:9px 12px; border-radius:8px; background:var(--red-bg); color:var(--red); font-size:12.5px; font-weight:600;">⚠ Received ${match.receivedQty} of ${expectedQty} expected — flagged as a quantity mismatch.</div>` : ''}
 
