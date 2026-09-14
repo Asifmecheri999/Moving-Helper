@@ -252,6 +252,128 @@ async function deleteItem(sticker, env, session) {
   return jsonResponse({ ok: true });
 }
 
+function rowToInventoryItem(row) {
+  const photos = parsePhotos(row.photos);
+  return {
+    sticker: row.sticker,
+    name: row.name,
+    type: row.type,
+    packing: row.packing,
+    qty: row.qty,
+    location: row.location,
+    locationDetail: row.location_detail,
+    owner: row.owner,
+    photo: row.photo_key || photos[0] || null,
+    photos: photos.length ? photos : (row.photo_key ? [row.photo_key] : []),
+    comments: row.comments || '',
+    ts: row.ts,
+    createdBy: row.created_by
+  };
+}
+
+async function listInventoryItems(env) {
+  const { results } = await env.DB.prepare('SELECT * FROM inventory_items ORDER BY sticker').all();
+  return jsonResponse(results.map(rowToInventoryItem));
+}
+
+async function createInventoryItem(request, env, session) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
+  if (!body.sticker || !body.name) return jsonResponse({ error: 'sticker and name required' }, 400);
+  const photos = Array.isArray(body.photos) ? body.photos.filter(Boolean) : (body.photo ? [body.photo] : []);
+  const photosJson = photos.length ? JSON.stringify(photos) : null;
+  try {
+    await env.DB.prepare(
+      `INSERT INTO inventory_items (sticker, name, type, packing, qty, location, location_detail, owner, photo_key, photos, comments, ts, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      body.sticker, body.name, body.type || '', body.packing || '', body.qty || 0,
+      body.location || '', body.locationDetail || '', body.owner || '',
+      photos[0] || null, photosJson, body.comments || '', body.ts || new Date().toISOString(),
+      session.username
+    ).run();
+  } catch (e) {
+    if (String(e.message || e).includes('UNIQUE')) {
+      return jsonResponse({ error: 'sticker already used' }, 409);
+    }
+    return jsonResponse({ error: String(e.message || e) }, 500);
+  }
+  return jsonResponse({ ok: true }, 201);
+}
+
+const INVENTORY_UPDATABLE_FIELDS = {
+  name: 'name', type: 'type', packing: 'packing', qty: 'qty',
+  location: 'location', locationDetail: 'location_detail',
+  owner: 'owner', photo: 'photo_key', comments: 'comments'
+};
+
+async function updateInventoryItem(sticker, request, env, session) {
+  const existing = await env.DB.prepare('SELECT created_by FROM inventory_items WHERE sticker = ?').bind(sticker).first();
+  if (!existing) return jsonResponse({ error: 'not found' }, 404);
+  const isUnclaimed = !existing.created_by;
+  if (session.role !== 'admin' && !isUnclaimed && existing.created_by !== session.username) {
+    return jsonResponse({ error: 'forbidden' }, 403);
+  }
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
+
+  let newSticker = null;
+  if (Object.prototype.hasOwnProperty.call(body, 'sticker')) {
+    const trimmed = String(body.sticker || '').trim();
+    if (!trimmed) return jsonResponse({ error: 'sticker cannot be empty' }, 400);
+    if (trimmed !== sticker) {
+      const clash = await env.DB.prepare('SELECT 1 FROM inventory_items WHERE sticker = ?').bind(trimmed).first();
+      if (clash) return jsonResponse({ error: 'sticker already used' }, 409);
+      newSticker = trimmed;
+    }
+  }
+
+  const sets = [];
+  const values = [];
+  for (const [key, col] of Object.entries(INVENTORY_UPDATABLE_FIELDS)) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      sets.push(`${col} = ?`);
+      values.push(body[key]);
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'photos') && Array.isArray(body.photos)) {
+    const photos = body.photos.filter(Boolean);
+    sets.push('photos = ?');
+    values.push(photos.length ? JSON.stringify(photos) : null);
+  }
+  if (isUnclaimed && session.role !== 'admin') {
+    sets.push('created_by = ?');
+    values.push(session.username);
+  }
+  if (newSticker) {
+    sets.push('sticker = ?');
+    values.push(newSticker);
+  }
+  if (sets.length === 0) return jsonResponse({ error: 'nothing to update' }, 400);
+  values.push(sticker);
+  await env.DB.prepare(`UPDATE inventory_items SET ${sets.join(', ')} WHERE sticker = ?`).bind(...values).run();
+  return jsonResponse({
+    ok: true,
+    claimed: isUnclaimed && session.role !== 'admin' ? session.username : undefined,
+    newSticker: newSticker || undefined
+  });
+}
+
+async function deleteInventoryItem(sticker, env, session) {
+  const row = await env.DB.prepare('SELECT photo_key, photos, created_by FROM inventory_items WHERE sticker = ?').bind(sticker).first();
+  if (!row) return jsonResponse({ error: 'not found' }, 404);
+  if (session.role !== 'admin' && row.created_by !== session.username) {
+    return jsonResponse({ error: 'forbidden' }, 403);
+  }
+  await env.DB.prepare('DELETE FROM inventory_items WHERE sticker = ?').bind(sticker).run();
+  const allPhotos = new Set(parsePhotos(row.photos));
+  if (row.photo_key) allPhotos.add(row.photo_key);
+  for (const key of allPhotos) {
+    try { await env.PHOTOS.delete(key); } catch (e) {}
+  }
+  return jsonResponse({ ok: true });
+}
+
 async function uploadPhoto(request, env) {
   const contentType = request.headers.get('content-type') || 'image/jpeg';
   const buf = await request.arrayBuffer();
@@ -383,6 +505,8 @@ export default {
       if (path === '/api/logout' && request.method === 'POST') return logout(request, env);
       if (path === '/api/items' && request.method === 'GET') return listItems(env);
       if (path === '/api/items' && request.method === 'POST') return createItem(request, env, session);
+      if (path === '/api/inventory-items' && request.method === 'GET') return listInventoryItems(env);
+      if (path === '/api/inventory-items' && request.method === 'POST') return createInventoryItem(request, env, session);
       if (path === '/api/teams' && request.method === 'GET') return getTeams(env);
       if (path === '/api/locations' && request.method === 'GET') return getLocations(env);
 
@@ -391,6 +515,13 @@ export default {
         const sticker = decodeURIComponent(m[1]);
         if (request.method === 'PATCH') return updateItem(sticker, request, env, session);
         if (request.method === 'DELETE') return deleteItem(sticker, env, session);
+      }
+
+      m = path.match(/^\/api\/inventory-items\/([^/]+)$/);
+      if (m) {
+        const sticker = decodeURIComponent(m[1]);
+        if (request.method === 'PATCH') return updateInventoryItem(sticker, request, env, session);
+        if (request.method === 'DELETE') return deleteInventoryItem(sticker, env, session);
       }
 
       if (path === '/api/photos' && request.method === 'POST') return uploadPhoto(request, env);
