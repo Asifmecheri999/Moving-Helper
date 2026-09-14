@@ -135,6 +135,17 @@
   }
   .item .thumb.empty{display:flex; align-items:center; justify-content:center; color:#c3c1b6; font-size:10px;}
   .item .thumb:not(.empty){cursor:pointer;}
+  .thumb-strip-wrap{position:relative; width:64px; height:64px; flex-shrink:0;}
+  .thumb-strip{
+    display:flex; width:64px; height:64px; overflow-x:auto; scroll-snap-type:x mandatory;
+    border-radius:8px; scrollbar-width:none; -ms-overflow-style:none;
+  }
+  .thumb-strip::-webkit-scrollbar{display:none;}
+  .thumb-strip .thumb{scroll-snap-align:start;}
+  .thumb-count{
+    position:absolute; bottom:3px; right:3px; background:rgba(13,17,23,0.72); color:#fff;
+    font-size:9.5px; font-weight:700; padding:1px 5px; border-radius:8px; pointer-events:none;
+  }
   .lightbox{
     display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:100;
     align-items:center; justify-content:center; padding:24px; cursor:pointer;
@@ -323,10 +334,11 @@
         <button type="button" class="chip" data-value="Accessory">Accessory</button>
       </div>
 
-      <label>Packing condition <span class="req">*</span> <span style="font-weight:400; color:#8a94a6;">(Packed = in a box or bag)</span></label>
+      <label>Condition <span class="req">*</span></label>
       <div class="chip-group" id="itemPackingGroup">
-        <button type="button" class="chip" data-value="Packed">Packed</button>
-        <button type="button" class="chip" data-value="Unpacked">Unpacked</button>
+        <button type="button" class="chip" data-value="In box">In box</button>
+        <button type="button" class="chip" data-value="Working">Working</button>
+        <button type="button" class="chip" data-value="Not working">Not working</button>
       </div>
 
       <label>Location at A9 (leave blank if unknown)</label>
@@ -423,10 +435,11 @@
         <button type="button" class="chip" data-value="Accessory">Accessory</button>
       </div>
 
-      <label>Packing condition <span class="req">*</span> <span style="font-weight:400; color:#8a94a6;">(Packed = in a box or bag)</span></label>
+      <label>Condition <span class="req">*</span></label>
       <div class="chip-group" id="invItemPackingGroup">
-        <button type="button" class="chip" data-value="Packed">Packed</button>
-        <button type="button" class="chip" data-value="Unpacked">Unpacked</button>
+        <button type="button" class="chip" data-value="In box">In box</button>
+        <button type="button" class="chip" data-value="Working">Working</button>
+        <button type="button" class="chip" data-value="Not working">Not working</button>
       </div>
 
       <button class="save-btn" id="invSaveBtn" disabled>Save item</button>
@@ -960,9 +973,9 @@ function setupChipGroup(groupId, defaultValue){
   return { get: () => value, set: v => { value = v; render(); } };
 }
 const typeChip = setupChipGroup('itemTypeGroup', 'Equipment');
-const packingChip = setupChipGroup('itemPackingGroup', 'Packed');
+const packingChip = setupChipGroup('itemPackingGroup', 'In box');
 function packingChipValue(raw){
-  return (raw === 'In box' || raw === 'Bag') ? 'Packed' : (raw || 'Packed');
+  return (raw === 'Packed' || raw === 'Bag') ? 'In box' : (raw || 'In box');
 }
 
 async function loadData(){
@@ -1118,7 +1131,7 @@ function renderPhotoTiles(){
   `).join('') + `
     <label class="photo-add-tile">
       +
-      <input type="file" accept="image/*" capture="environment" id="photoInput">
+      <input type="file" accept="image/*" id="photoInput">
     </label>
   `;
   wrap.querySelectorAll('.remove-photo').forEach(btn => {
@@ -1301,7 +1314,7 @@ function resetForm(){
   $('itemName').value = '';
   $('itemQty').value = 1;
   typeChip.set('Equipment');
-  packingChip.set('Packed');
+  packingChip.set('In box');
   $('itemLocDetail').value = '';
   $('itemDestDetail').value = '';
   $('itemComments').value = '';
@@ -1396,7 +1409,7 @@ function renderList(){
   list.innerHTML = filtered.map(i => `
     <div class="item">
       ${selectMode ? (canDelete(i) ? `<input type="checkbox" class="select-check" data-sticker="${escHtml(i.sticker)}" ${selectedStickers.has(i.sticker) ? 'checked' : ''}>` : `<span style="width:20px; flex-shrink:0;"></span>`) : ''}
-      ${i.photo ? `<img class="thumb" loading="lazy" src="${photoSrc(i.photo)}" data-lightbox="${escHtml(photoSrc(i.photo))}">` : `<div class="thumb empty">no photo</div>`}
+      ${photoStripHtml(i)}
       <div class="body">
         <div class="top">
           <span class="num">#${i.sticker}</span>
@@ -1531,6 +1544,14 @@ async function buildStyledExcelBlob(headers, rows, textCols = [], photoCols = []
   return new Blob([buffer], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
 
+function promptForFilename(defaultName){
+  let name = prompt('File name for this export:', defaultName);
+  if(name === null) return null;
+  name = name.trim() || defaultName;
+  if(!/\.xlsx$/i.test(name)) name += '.xlsx';
+  return name;
+}
+
 async function downloadStyledExcel(filename, headers, rows, textCols = [], photoCols = [], columnOptions = {}){
   const blob = await buildStyledExcelBlob(headers, rows, textCols, photoCols, columnOptions);
   const url = URL.createObjectURL(blob);
@@ -1545,10 +1566,21 @@ function itemPhotoList(i){
   return (i.photos && i.photos.length) ? i.photos : (i.photo ? [i.photo] : []);
 }
 
+function photoStripHtml(item){
+  const photos = itemPhotoList(item);
+  if(photos.length === 0) return `<div class="thumb empty">no photo</div>`;
+  if(photos.length === 1){
+    return `<img class="thumb" loading="lazy" src="${photoSrc(photos[0])}" data-lightbox="${escHtml(photoSrc(photos[0]))}">`;
+  }
+  const imgs = photos.map(p => `<img class="thumb" loading="lazy" src="${photoSrc(p)}" data-lightbox="${escHtml(photoSrc(p))}">`).join('');
+  return `<div class="thumb-strip-wrap"><div class="thumb-strip">${imgs}</div><span class="thumb-count">&times;${photos.length}</span></div>`;
+}
+
 async function buildLogExportData(){
-  const scoped = teamScopedItems().slice().sort((a, b) => stickerSortValue(a.sticker) - stickerSortValue(b.sticker));
+  let scoped = teamScopedItems().slice().sort((a, b) => stickerSortValue(a.sticker) - stickerSortValue(b.sticker));
+  if(selectedStickers.size > 0) scoped = scoped.filter(i => selectedStickers.has(i.sticker));
   const maxPhotos = Math.max(1, ...scoped.map(i => itemPhotoList(i).length));
-  const baseHeaders = ['Sticker','Name','Type','Packing','Qty','Current location','Exact Location','Location at A9','Team','Entered By','Timestamp','Comments'];
+  const baseHeaders = ['Sticker','Name','Type','Condition','Qty','Current location','Exact Location','Location at A9','Team','Entered By','Timestamp','Comments'];
   const photoHeaders = Array.from({length: maxPhotos}, (_, idx) => `Photo ${idx + 1}`);
   const headers = [...baseHeaders, ...photoHeaders];
   const photoCols = photoHeaders.map((_, idx) => baseHeaders.length + idx);
@@ -1566,9 +1598,11 @@ async function buildLogExportData(){
 }
 
 $('exportBtn').addEventListener('click', async () => {
-  showToast('Preparing Excel file...');
+  const filename = promptForFilename('item-tags.xlsx');
+  if(filename === null) return;
+  showToast(selectedStickers.size > 0 ? `Preparing Excel file (${selectedStickers.size} selected)...` : 'Preparing Excel file...');
   const { headers, rows, photoCols } = await buildLogExportData();
-  downloadStyledExcel('item-tags.xlsx', headers, rows, [0], photoCols);
+  downloadStyledExcel(filename, headers, rows, [0], photoCols);
 });
 
 function roomOptions(){
@@ -1577,10 +1611,10 @@ function roomOptions(){
 
 async function downloadBlankTemplate(){
   showToast('Preparing template...');
-  const headers = ['Sticker','Name','Type','Packing','Qty','Current location','Exact Location','Location at A9','Team','Comments','Photo'];
+  const headers = ['Sticker','Name','Type','Condition','Qty','Current location','Exact Location','Location at A9','Team','Comments','Photo'];
   const columnOptions = {
     2: ['Equipment','Tool','Consumables','Accessory'],
-    3: ['Packed','Unpacked'],
+    3: ['In box','Working','Not working'],
     7: roomOptions()
   };
   if(defaultLocations.length) columnOptions[5] = defaultLocations;
@@ -1594,7 +1628,7 @@ $('downloadTemplateBtn').addEventListener('click', downloadBlankTemplate);
 // ---- Inventory (separate item list: no destination, no A9 check-in) ----
 
 const invTypeChip = setupChipGroup('invItemTypeGroup', 'Equipment');
-const invPackingChip = setupChipGroup('invItemPackingGroup', 'Packed');
+const invPackingChip = setupChipGroup('invItemPackingGroup', 'In box');
 
 function renderInvPhotoTiles(){
   const wrap = $('invPhotoTiles');
@@ -1606,7 +1640,7 @@ function renderInvPhotoTiles(){
   `).join('') + `
     <label class="photo-add-tile">
       +
-      <input type="file" accept="image/*" capture="environment" id="invPhotoInput">
+      <input type="file" accept="image/*" id="invPhotoInput">
     </label>
   `;
   wrap.querySelectorAll('.remove-photo').forEach(btn => {
@@ -1835,7 +1869,7 @@ function renderInvList(){
   list.innerHTML = filtered.map(i => `
     <div class="item">
       ${invSelectMode ? (canDelete(i) ? `<input type="checkbox" class="select-check" data-sticker="${escHtml(i.sticker)}" ${invSelectedStickers.has(i.sticker) ? 'checked' : ''}>` : `<span style="width:20px; flex-shrink:0;"></span>`) : ''}
-      ${i.photo ? `<img class="thumb" loading="lazy" src="${photoSrc(i.photo)}" data-lightbox="${escHtml(photoSrc(i.photo))}">` : `<div class="thumb empty">no photo</div>`}
+      ${photoStripHtml(i)}
       <div class="body">
         <div class="top">
           <span class="num">#${i.sticker}</span>
@@ -2020,7 +2054,7 @@ function resetInvForm(){
   $('invItemName').value = '';
   $('invItemQty').value = 1;
   invTypeChip.set('Equipment');
-  invPackingChip.set('Packed');
+  invPackingChip.set('In box');
   $('invItemLocDetail').value = '';
   $('invItemComments').value = '';
   invPhotoList = [];
@@ -2036,9 +2070,10 @@ function resetInvForm(){
 }
 
 async function buildInvExportData(){
-  const scoped = teamInvScopedItems().slice().sort((a, b) => stickerSortValue(a.sticker) - stickerSortValue(b.sticker));
+  let scoped = teamInvScopedItems().slice().sort((a, b) => stickerSortValue(a.sticker) - stickerSortValue(b.sticker));
+  if(invSelectedStickers.size > 0) scoped = scoped.filter(i => invSelectedStickers.has(i.sticker));
   const maxPhotos = Math.max(1, ...scoped.map(i => itemPhotoList(i).length));
-  const baseHeaders = ['Sticker','Name','Type','Packing','Qty','Location','Exact Location','Team','Entered By','Timestamp','Comments'];
+  const baseHeaders = ['Sticker','Name','Type','Condition','Qty','Location','Exact Location','Team','Entered By','Timestamp','Comments'];
   const photoHeaders = Array.from({length: maxPhotos}, (_, idx) => `Photo ${idx + 1}`);
   const headers = [...baseHeaders, ...photoHeaders];
   const photoCols = photoHeaders.map((_, idx) => baseHeaders.length + idx);
@@ -2056,17 +2091,19 @@ async function buildInvExportData(){
 }
 
 $('invExportBtn').addEventListener('click', async () => {
-  showToast('Preparing Excel file...');
+  const filename = promptForFilename('inventory.xlsx');
+  if(filename === null) return;
+  showToast(invSelectedStickers.size > 0 ? `Preparing Excel file (${invSelectedStickers.size} selected)...` : 'Preparing Excel file...');
   const { headers, rows, photoCols } = await buildInvExportData();
-  downloadStyledExcel('inventory.xlsx', headers, rows, [0], photoCols);
+  downloadStyledExcel(filename, headers, rows, [0], photoCols);
 });
 
 async function downloadInvBlankTemplate(){
   showToast('Preparing template...');
-  const headers = ['Sticker','Name','Type','Packing','Qty','Location','Exact Location','Team','Comments','Photo'];
+  const headers = ['Sticker','Name','Type','Condition','Qty','Location','Exact Location','Team','Comments','Photo'];
   const columnOptions = {
     2: ['Equipment','Tool','Consumables','Accessory'],
-    3: ['Packed','Unpacked']
+    3: ['In box','Working','Not working']
   };
   if(defaultLocations.length) columnOptions[5] = defaultLocations;
   const myTeams = (session && session.teams) || [];
@@ -2148,7 +2185,7 @@ function renderCheckinList(){
   }
   list.innerHTML = filtered.map(i => `
     <div class="item checkin-match" data-sticker="${escHtml(i.sticker)}" style="cursor:pointer;">
-      ${i.photo ? `<img class="thumb" loading="lazy" src="${photoSrc(i.photo)}" data-lightbox="${escHtml(photoSrc(i.photo))}">` : `<div class="thumb empty">no photo</div>`}
+      ${photoStripHtml(i)}
       <div class="body">
         <div class="top">
           <span class="num">#${i.sticker}</span>
@@ -2199,7 +2236,7 @@ function renderCheckinMatches(query){
   $('checkinResult').innerHTML = '';
   matchesEl.innerHTML = matches.map(i => `
     <div class="item checkin-match" data-sticker="${escHtml(i.sticker)}" style="cursor:pointer;">
-      ${i.photo ? `<img class="thumb" loading="lazy" src="${photoSrc(i.photo)}" data-lightbox="${escHtml(photoSrc(i.photo))}">` : `<div class="thumb empty">no photo</div>`}
+      ${photoStripHtml(i)}
       <div class="body">
         <div class="top">
           <span class="num">#${i.sticker}</span>
@@ -2237,7 +2274,7 @@ function renderCheckinResult(sticker, showBack){
   box.innerHTML = `
     ${showBack ? `<a href="#" class="back-link" id="checkinBackLink" style="margin-bottom:10px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Back to results</a>` : ''}
     <div class="item" style="margin-bottom:0;">
-      ${match.photo ? `<img class="thumb" loading="lazy" src="${photoSrc(match.photo)}" data-lightbox="${escHtml(photoSrc(match.photo))}">` : `<div class="thumb empty">no photo</div>`}
+      ${photoStripHtml(match)}
       <div class="body">
         <div class="top">
           <span class="num">#${match.sticker}</span>
@@ -2249,7 +2286,6 @@ function renderCheckinResult(sticker, showBack){
         <div class="meta">${match.type} · expected qty ${expectedQty} · from ${match.location}${match.locationDetail ? ' (' + match.locationDetail + ')' : ''} → ${match.destination}${match.destinationDetail ? ' (' + match.destinationDetail + ')' : ''}</div>
       </div>
     </div>
-    ${match.photos && match.photos.length > 1 ? `<div class="photo-tiles" style="margin-top:10px;">${match.photos.map(p => `<div class="photo-tile"><img class="thumb" loading="lazy" src="${photoSrc(p)}" data-lightbox="${escHtml(photoSrc(p))}"></div>`).join('')}</div>` : ''}
     ${match.comments ? `<div style="margin-top:10px; font-size:13px; color:#6b6a62;"><strong>Comments:</strong> ${escHtml(match.comments)}</div>` : ''}
 
     ${isQtyMismatch(match) ? `<div style="margin-top:10px; padding:9px 12px; border-radius:8px; background:var(--red-bg); color:var(--red); font-size:12.5px; font-weight:600;">⚠ Received ${match.receivedQty} of ${expectedQty} expected — flagged as a quantity mismatch.</div>` : ''}
