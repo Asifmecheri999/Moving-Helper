@@ -155,7 +155,15 @@
     align-items:center; justify-content:center; padding:24px; cursor:pointer;
   }
   .lightbox.show{display:flex;}
-  .lightbox img{max-width:100%; max-height:100%; border-radius:8px; touch-action:pan-y;}
+  .lightbox-viewport{
+    width:100%; height:100%; display:flex; align-items:center; justify-content:center;
+    overflow:hidden;
+  }
+  .lightbox-viewport.zoomed{
+    display:block; overflow:auto; -webkit-overflow-scrolling:touch;
+  }
+  .lightbox img{max-width:100%; max-height:100%; border-radius:8px; display:block; touch-action:pan-y;}
+  .lightbox img.zoomed{max-width:none; max-height:none; width:230%; border-radius:0;}
   .lightbox-nav{
     position:absolute; top:50%; transform:translateY(-50%); background:rgba(255,255,255,0.15);
     color:#fff; border:none; width:44px; height:44px; border-radius:50%; font-size:26px;
@@ -163,6 +171,11 @@
   }
   .lightbox-prev{left:10px;}
   .lightbox-next{right:10px;}
+  .lightbox-close{
+    position:absolute; top:14px; right:14px; width:36px; height:36px; border-radius:50%;
+    background:rgba(255,255,255,0.15); color:#fff; border:none; font-size:20px; font-weight:700;
+    line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:2;
+  }
   .lightbox-counter{
     position:absolute; bottom:20px; left:50%; transform:translateX(-50%);
     color:#fff; font-size:13px; font-weight:600; background:rgba(0,0,0,0.4);
@@ -597,8 +610,11 @@
 <div class="toast" id="toast"></div>
 
 <div class="lightbox" id="lightbox">
+  <button type="button" class="lightbox-close" id="lightboxClose">&times;</button>
   <button type="button" class="lightbox-nav lightbox-prev" id="lightboxPrev">&lsaquo;</button>
-  <img id="lightboxImg" alt="Photo">
+  <div class="lightbox-viewport" id="lightboxViewport">
+    <img id="lightboxImg" alt="Photo">
+  </div>
   <button type="button" class="lightbox-nav lightbox-next" id="lightboxNext">&rsaquo;</button>
   <div class="lightbox-counter" id="lightboxCounter"></div>
 </div>
@@ -951,8 +967,27 @@ function photoSrc(raw){
 
 let lightboxPhotos = [];
 let lightboxIndex = 0;
+let lightboxZoomed = false;
+
+function setLightboxZoom(zoomed){
+  lightboxZoomed = zoomed;
+  $('lightboxViewport').classList.toggle('zoomed', zoomed);
+  $('lightboxImg').classList.toggle('zoomed', zoomed);
+  if(zoomed){
+    requestAnimationFrame(() => {
+      const vp = $('lightboxViewport');
+      vp.scrollLeft = (vp.scrollWidth - vp.clientWidth) / 2;
+      vp.scrollTop = (vp.scrollHeight - vp.clientHeight) / 2;
+    });
+  }
+}
+
+function toggleLightboxZoom(){
+  setLightboxZoom(!lightboxZoomed);
+}
 
 function showLightboxPhoto(){
+  setLightboxZoom(false);
   $('lightboxImg').src = lightboxPhotos[lightboxIndex] || '';
   const multi = lightboxPhotos.length > 1;
   $('lightboxPrev').style.display = multi ? 'flex' : 'none';
@@ -979,10 +1014,12 @@ function closeLightbox(){
   $('lightbox').classList.remove('show');
   $('lightboxImg').src = '';
   lightboxPhotos = [];
+  setLightboxZoom(false);
 }
 
 $('lightboxPrev').addEventListener('click', e => { e.stopPropagation(); lightboxStep(-1); });
 $('lightboxNext').addEventListener('click', e => { e.stopPropagation(); lightboxStep(1); });
+$('lightboxClose').addEventListener('click', e => { e.stopPropagation(); closeLightbox(); });
 
 let lbTouchStartX = null, lbTouchStartY = null, lbSwiped = false;
 $('lightbox').addEventListener('touchstart', e => {
@@ -1002,12 +1039,28 @@ $('lightbox').addEventListener('touchend', e => {
   if(lbTouchStartX === null) return;
   const dx = e.changedTouches[0].clientX - lbTouchStartX;
   lbTouchStartX = null;
-  if(Math.abs(dx) > 40 && lbSwiped) lightboxStep(dx < 0 ? 1 : -1);
+  if(!lightboxZoomed && Math.abs(dx) > 40 && lbSwiped) lightboxStep(dx < 0 ? 1 : -1);
 });
 
 $('lightbox').addEventListener('click', () => {
   if(lbSwiped){ lbSwiped = false; return; }
   closeLightbox();
+});
+
+let lbImgClickTimer = null;
+$('lightboxImg').addEventListener('click', e => {
+  e.stopPropagation();
+  if(lbSwiped){ lbSwiped = false; return; }
+  if(lbImgClickTimer){
+    clearTimeout(lbImgClickTimer);
+    lbImgClickTimer = null;
+    toggleLightboxZoom();
+  } else {
+    lbImgClickTimer = setTimeout(() => {
+      lbImgClickTimer = null;
+      closeLightbox();
+    }, 280);
+  }
 });
 function bindThumbLightbox(container){
   container.querySelectorAll('.thumb[data-lightbox-photos]').forEach(img => {
