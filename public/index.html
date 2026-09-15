@@ -75,7 +75,7 @@
   .save-btn:active, .export-btn:active, .delete-btn:active, .edit-btn:active{
     opacity:0.72;
   }
-  .photo-tiles{display:flex; gap:10px; overflow-x:auto; padding-bottom:2px;}
+  .photo-tiles{display:flex; flex-wrap:nowrap; gap:10px; overflow-x:auto; padding-bottom:2px;}
   .photo-tile{
     position:relative; width:90px; height:90px; border-radius:10px; flex-shrink:0;
     overflow:hidden; background:var(--paper); border:1.5px solid var(--line);
@@ -274,23 +274,30 @@
       <div class="name" id="homeUserLabel"></div>
       <div class="label" id="homeTeamLocLabel" style="margin-top:8px;"></div>
     </div>
-    <button class="menu-btn" data-view="add">Add item</button>
-    <button class="menu-btn" data-view="list">Log</button>
-    <button class="menu-btn" data-view="checkin">A9 Check-in</button>
-    <button class="menu-btn" id="downloadTemplateBtn">Download blank template</button>
-
-    <div class="menu-section-label">Inventory</div>
-    <button class="menu-btn" data-view="invAdd">Add inventory item</button>
-    <button class="menu-btn" data-view="invList">Inventory log</button>
-    <button class="menu-btn" id="downloadInvTemplateBtn">Download inventory template</button>
-
+    <button class="menu-btn" data-view="moveHome">Moving</button>
+    <button class="menu-btn" data-view="invHome">Inventory</button>
     <button class="menu-btn" data-view="settings">Settings</button>
     <button class="menu-btn" data-view="admin" id="adminMenuBtn" style="display:none;">Admin</button>
     <button class="menu-btn logout" id="homeLogoutBtn">Log out</button>
   </div>
 
-  <div id="addView" style="display:none;">
+  <div id="moveHomeView" style="display:none;">
     <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Home</a>
+    <button class="menu-btn" data-view="add">Add item</button>
+    <button class="menu-btn" data-view="list">Log</button>
+    <button class="menu-btn" data-view="checkin">A9 Check-in</button>
+    <button class="menu-btn" id="downloadTemplateBtn">Download blank template</button>
+  </div>
+
+  <div id="invHomeView" style="display:none;">
+    <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Home</a>
+    <button class="menu-btn" data-view="invAdd">Add inventory item</button>
+    <button class="menu-btn" data-view="invList">Inventory log</button>
+    <button class="menu-btn" id="downloadInvTemplateBtn">Download inventory template</button>
+  </div>
+
+  <div id="addView" style="display:none;">
+    <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Moving</a>
     <div class="card">
       <div class="edit-banner" id="editBanner" style="display:none;">
         <span>Editing #<span id="editBannerNum"></span></span>
@@ -372,7 +379,7 @@
   </div>
 
   <div id="listView" style="display:none;">
-    <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Home</a>
+    <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Moving</a>
     <input type="text" id="logSearch" placeholder="Search by sticker number or name" style="margin-bottom:16px;">
     <div class="filter-group" id="logLocGroup" style="display:none;">
       <div class="filter-label">Location</div>
@@ -391,7 +398,7 @@
   </div>
 
   <div id="invAddView" style="display:none;">
-    <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Home</a>
+    <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Inventory</a>
     <div class="card">
       <div class="edit-banner" id="invEditBanner" style="display:none;">
         <span>Editing #<span id="invEditBannerNum"></span></span>
@@ -455,7 +462,7 @@
   </div>
 
   <div id="invListView" style="display:none;">
-    <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Home</a>
+    <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Inventory</a>
     <input type="text" id="invLogSearch" placeholder="Search by sticker number or name" style="margin-bottom:16px;">
     <div class="filter-group" id="invLogLocGroup" style="display:none;">
       <div class="filter-label">Location</div>
@@ -474,7 +481,7 @@
   </div>
 
   <div id="checkinView" style="display:none;">
-    <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Home</a>
+    <a href="#" class="back-link" data-back><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Moving</a>
     <button class="export-btn" id="exportCheckinBtn">Export receiving list (Excel)</button>
 
     <div class="card">
@@ -705,9 +712,9 @@ function showApp(){
   $('adminMenuBtn').style.display = session.role === 'admin' ? '' : 'none';
   updateHomeLabel();
   if(defaultLocations.length === 0){
-    showView('setup');
+    enterRootView('setup');
   } else {
-    showView('home');
+    enterRootView('home');
   }
 }
 
@@ -717,7 +724,7 @@ async function logout(){
   showLoginScreen();
 }
 
-const VIEWS = ['home', 'add', 'list', 'checkin', 'admin', 'settings', 'setup', 'invAdd', 'invList'];
+const VIEWS = ['home', 'moveHome', 'invHome', 'add', 'list', 'checkin', 'admin', 'settings', 'setup', 'invAdd', 'invList'];
 function showView(name){
   VIEWS.forEach(v => { $(v + 'View').style.display = v === name ? 'block' : 'none'; });
   if(name === 'list'){ renderLogLocFilters(); renderLogUserFilters(); renderList(); }
@@ -727,20 +734,33 @@ function showView(name){
   else if(name === 'invList'){ renderInvLogLocFilters(); renderInvLogUserFilters(); renderInvList(); }
 }
 
-let navigatedAwayFromHome = false;
-function goToView(name){
-  if(name === 'home'){
-    navigatedAwayFromHome = false;
-  } else if(!navigatedAwayFromHome){
-    history.pushState({ moverView: name }, '');
-    navigatedAwayFromHome = true;
-  }
+let viewStack = ['home'];
+function currentView(){ return viewStack[viewStack.length - 1]; }
+
+function enterRootView(name){
+  viewStack = [name];
   showView(name);
 }
+
+function goToView(name){
+  viewStack.push(name);
+  history.pushState({ depth: viewStack.length }, '');
+  showView(name);
+}
+
+function popView(){
+  if(viewStack.length > 1) viewStack.pop();
+  showView(currentView());
+}
+
 window.addEventListener('popstate', () => {
-  navigatedAwayFromHome = false;
-  showView('home');
+  popView();
 });
+
+function goBack(){
+  if(viewStack.length > 1) history.back();
+  else showView('home');
+}
 
 document.querySelectorAll('.menu-btn[data-view]').forEach(btn => {
   btn.addEventListener('click', () => goToView(btn.dataset.view));
@@ -748,8 +768,7 @@ document.querySelectorAll('.menu-btn[data-view]').forEach(btn => {
 document.querySelectorAll('[data-back]').forEach(link => {
   link.addEventListener('click', e => {
     e.preventDefault();
-    if(navigatedAwayFromHome) history.back();
-    else showView('home');
+    goBack();
   });
 });
 $('homeLogoutBtn').addEventListener('click', logout);
@@ -840,7 +859,7 @@ $('setupContinueBtn').addEventListener('click', async () => {
   defaultLocations = selectedLocations;
   localStorage.setItem(scopedKey('tagger-defaultlocations'), JSON.stringify(defaultLocations));
   updateHomeLabel();
-  showView('home');
+  enterRootView('home');
   loadData();
   loadInventoryData();
 });
@@ -1306,7 +1325,7 @@ $('saveBtn').addEventListener('click', async () => {
     }
     await saveItems();
     resetForm();
-    showView('list');
+    goBack();
   } else {
     const item = { sticker: stickerVal, ...fields, location: itemLocationValue, owner: itemTeamValue, photo: photoKeys[0] || null, photos: photoKeys, ts: new Date().toISOString(), createdBy: session.username };
     try{
@@ -1350,7 +1369,7 @@ $('deleteItemBtn').addEventListener('click', async () => {
   resetForm();
   renderList();
   updateHeaderCount();
-  showView('list');
+  goBack();
 });
 
 function startEdit(sticker){
@@ -1373,7 +1392,7 @@ function startEdit(sticker){
   $('deleteItemBtn').style.display = canDelete(item) ? 'block' : 'none';
   $('addLocationGroup').style.display = 'none';
   $('addTeamGroup').style.display = 'none';
-  showView('add');
+  goToView('add');
   renderLocDetailChips();
   checkSaveEnabled();
 }
@@ -2054,7 +2073,7 @@ $('invSaveBtn').addEventListener('click', async () => {
     }
     await saveInventoryItems();
     resetInvForm();
-    showView('invList');
+    goBack();
   } else {
     const item = { sticker: stickerVal, ...fields, location: invItemLocationValue, owner: invItemTeamValue, photo: photoKeys[0] || null, photos: photoKeys, ts: new Date().toISOString(), createdBy: session.username };
     try{
@@ -2096,7 +2115,7 @@ $('invDeleteItemBtn').addEventListener('click', async () => {
   showToast('Item deleted');
   resetInvForm();
   renderInvList();
-  showView('invList');
+  goBack();
 });
 
 function startInvEdit(sticker){
@@ -2118,7 +2137,7 @@ function startInvEdit(sticker){
   $('invDeleteItemBtn').style.display = canDelete(item) ? 'block' : 'none';
   $('invAddLocationGroup').style.display = 'none';
   $('invAddTeamGroup').style.display = 'none';
-  showView('invAdd');
+  goToView('invAdd');
   renderInvLocDetailChips();
   checkInvSaveEnabled();
 }
