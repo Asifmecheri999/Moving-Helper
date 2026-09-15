@@ -30,6 +30,7 @@
     --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
   *{box-sizing:border-box;}
+  html{-webkit-text-size-adjust:100%; text-size-adjust:100%;}
   body{
     margin:0; background:var(--paper); color:var(--ink);
     font-family:var(--sans); -webkit-tap-highlight-color:transparent;
@@ -87,8 +88,8 @@
     justify-content:center; font-size:14px; font-weight:700; line-height:1; padding:0;
   }
   .photo-add-tile{
-    width:90px; height:90px; border-radius:10px; flex-shrink:0; border:1.5px dashed var(--line);
-    display:flex; align-items:center; justify-content:center; position:relative;
+    width:90px; height:90px; margin:0; border-radius:10px; flex-shrink:0; border:1.5px dashed var(--line);
+    display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;
     background:var(--paper); color:#8a8a80; font-size:28px; font-weight:300;
   }
   .photo-add-tile input{position:absolute; inset:0; opacity:0; cursor:pointer;}
