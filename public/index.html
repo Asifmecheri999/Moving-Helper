@@ -112,6 +112,14 @@
   .chip.on{background:var(--blue); color:#fff; border-color:var(--blue); position:relative; padding-right:26px;}
   .chip-x{display:none; position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700;}
   .chip.on .chip-x{display:inline;}
+  .loc-chip-wrap{display:inline-flex; align-items:center; gap:2px;}
+  .loc-chip-wrap .chip{flex:none; min-height:auto; padding:8px 14px;}
+  .chip-remove{
+    width:22px; height:22px; border-radius:50%; border:1px solid var(--line); background:var(--panel);
+    color:#8a8a80; font-size:13px; font-weight:700; flex-shrink:0; line-height:1; padding:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .chip-remove:active{background:var(--paper);}
   .req{color:var(--red); font-weight:700;}
   .badge{
     font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:20px;
@@ -637,9 +645,16 @@ function scopedKey(base){
   return session && session.username ? `${base}:${session.username}` : base;
 }
 
+let hiddenLocDetails = [];
+
 function loadUserDefaults(){
   defaultLocations = [];
+  hiddenLocDetails = [];
   if(!session || !session.username) return;
+
+  try{
+    hiddenLocDetails = JSON.parse(localStorage.getItem(scopedKey('tagger-hidden-locdetails')) || '[]');
+  }catch(e){ hiddenLocDetails = []; }
 
   const locKey = scopedKey('tagger-defaultlocations');
   const rawScoped = localStorage.getItem(locKey);
@@ -664,6 +679,13 @@ function loadUserDefaults(){
   localStorage.removeItem('tagger-defaultteams');
 }
 loadUserDefaults();
+
+function hideLocDetail(value){
+  if(!hiddenLocDetails.includes(value)) hiddenLocDetails.push(value);
+  localStorage.setItem(scopedKey('tagger-hidden-locdetails'), JSON.stringify(hiddenLocDetails));
+  renderLocDetailChips();
+  renderInvLocDetailChips();
+}
 
 function escHtml(v){
   return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -1143,18 +1165,26 @@ function renderLocDetailChips(){
   const all = [];
   for(const i of items){
     const d = (i.locationDetail || '').trim();
-    if(d && !seen.has(d)){ seen.add(d); all.push(d); }
+    if(d && !seen.has(d) && !hiddenLocDetails.includes(d)){ seen.add(d); all.push(d); }
   }
   const current = $('itemLocDetail').value.trim();
   const query = current.toLowerCase();
   const recent = (query ? all.filter(d => d.toLowerCase().includes(query)) : all).slice(0, 10);
-  el.innerHTML = recent.map(d => `<button type="button" class="chip" data-value="${escHtml(d)}">${escHtml(d)}</button>`).join('');
+  el.innerHTML = recent.map(d => `
+    <span class="loc-chip-wrap">
+      <button type="button" class="chip" data-value="${escHtml(d)}">${escHtml(d)}</button>
+      <button type="button" class="chip-remove" data-value="${escHtml(d)}" title="Remove suggestion">&times;</button>
+    </span>
+  `).join('');
   el.querySelectorAll('.chip').forEach(c => {
     c.classList.toggle('on', c.dataset.value === current);
     c.addEventListener('click', () => {
       $('itemLocDetail').value = c.dataset.value;
       renderLocDetailChips();
     });
+  });
+  el.querySelectorAll('.chip-remove').forEach(btn => {
+    btn.addEventListener('click', () => hideLocDetail(btn.dataset.value));
   });
 }
 
@@ -1823,18 +1853,26 @@ function renderInvLocDetailChips(){
   const all = [];
   for(const i of inventoryItems){
     const d = (i.locationDetail || '').trim();
-    if(d && !seen.has(d)){ seen.add(d); all.push(d); }
+    if(d && !seen.has(d) && !hiddenLocDetails.includes(d)){ seen.add(d); all.push(d); }
   }
   const current = $('invItemLocDetail').value.trim();
   const query = current.toLowerCase();
   const recent = (query ? all.filter(d => d.toLowerCase().includes(query)) : all).slice(0, 10);
-  el.innerHTML = recent.map(d => `<button type="button" class="chip" data-value="${escHtml(d)}">${escHtml(d)}</button>`).join('');
+  el.innerHTML = recent.map(d => `
+    <span class="loc-chip-wrap">
+      <button type="button" class="chip" data-value="${escHtml(d)}">${escHtml(d)}</button>
+      <button type="button" class="chip-remove" data-value="${escHtml(d)}" title="Remove suggestion">&times;</button>
+    </span>
+  `).join('');
   el.querySelectorAll('.chip').forEach(c => {
     c.classList.toggle('on', c.dataset.value === current);
     c.addEventListener('click', () => {
       $('invItemLocDetail').value = c.dataset.value;
       renderInvLocDetailChips();
     });
+  });
+  el.querySelectorAll('.chip-remove').forEach(btn => {
+    btn.addEventListener('click', () => hideLocDetail(btn.dataset.value));
   });
 }
 

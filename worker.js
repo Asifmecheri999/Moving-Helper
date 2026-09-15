@@ -50,6 +50,17 @@ function parsePhotos(raw) {
   }
 }
 
+async function notifySharePoint(url, payload) {
+  if (!url) return;
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch (e) {}
+}
+
 function rowToItem(row) {
   const photos = parsePhotos(row.photos);
   return {
@@ -117,7 +128,28 @@ async function listItems(env) {
   return jsonResponse(results.map(rowToItem));
 }
 
-async function createItem(request, env, session) {
+function movingSharePointPayload(item) {
+  return {
+    op: 'upsert',
+    sticker: item.sticker, name: item.name, type: item.type || '', packing: item.packing || '',
+    qty: item.qty || 0, location: item.location || '', locationDetail: item.locationDetail || '',
+    destination: item.destination || '', destinationDetail: item.destinationDetail || '',
+    team: item.owner || '', enteredBy: item.createdBy || '', timestamp: item.ts || '',
+    comments: item.comments || ''
+  };
+}
+
+function inventorySharePointPayload(item) {
+  return {
+    op: 'upsert',
+    sticker: item.sticker, name: item.name, type: item.type || '', packing: item.packing || '',
+    qty: item.qty || 0, location: item.location || '', locationDetail: item.locationDetail || '',
+    team: item.owner || '', enteredBy: item.createdBy || '', timestamp: item.ts || '',
+    comments: item.comments || ''
+  };
+}
+
+async function createItem(request, env, session, ctx) {
   let body;
   try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
   if (!body.sticker || !body.name) return jsonResponse({ error: 'sticker and name required' }, 400);
@@ -154,6 +186,14 @@ async function createItem(request, env, session) {
       }
       return jsonResponse({ error: String(e2.message || e2) }, 500);
     }
+  }
+  if (ctx) {
+    ctx.waitUntil(notifySharePoint(env.SHAREPOINT_MOVING_WEBHOOK_URL, movingSharePointPayload({
+      sticker: body.sticker, name: body.name, type: body.type, packing: body.packing, qty: body.qty,
+      location: body.location, locationDetail: body.locationDetail, destination: body.destination,
+      destinationDetail: body.destinationDetail, owner: body.owner, createdBy: session.username,
+      ts: body.ts || new Date().toISOString(), comments
+    })));
   }
   return jsonResponse({ ok: true }, 201);
 }
@@ -192,7 +232,7 @@ function buildUpdateSets(body, opts, includeComments) {
   return { sets, values };
 }
 
-async function updateItem(sticker, request, env, session) {
+async function updateItem(sticker, request, env, session, ctx) {
   const existing = await env.DB.prepare('SELECT created_by FROM items WHERE sticker = ?').bind(sticker).first();
   if (!existing) return jsonResponse({ error: 'not found' }, 404);
   const isUnclaimed = !existing.created_by;
@@ -225,6 +265,13 @@ async function updateItem(sticker, request, env, session) {
     fallback.values.push(sticker);
     await env.DB.prepare(`UPDATE items SET ${fallback.sets.join(', ')} WHERE sticker = ?`).bind(...fallback.values).run();
   }
+  if (ctx) {
+    ctx.waitUntil((async () => {
+      if (newSticker) await notifySharePoint(env.SHAREPOINT_MOVING_WEBHOOK_URL, { op: 'delete', sticker });
+      const freshRow = await env.DB.prepare('SELECT * FROM items WHERE sticker = ?').bind(newSticker || sticker).first();
+      if (freshRow) await notifySharePoint(env.SHAREPOINT_MOVING_WEBHOOK_URL, movingSharePointPayload(rowToItem(freshRow)));
+    })());
+  }
   return jsonResponse({
     ok: true,
     claimed: isUnclaimed && session.role !== 'admin' ? session.username : undefined,
@@ -232,7 +279,7 @@ async function updateItem(sticker, request, env, session) {
   });
 }
 
-async function deleteItem(sticker, env, session) {
+async function deleteItem(sticker, env, session, ctx) {
   let row;
   try {
     row = await env.DB.prepare('SELECT photo_key, photos, created_by FROM items WHERE sticker = ?').bind(sticker).first();
@@ -249,6 +296,7 @@ async function deleteItem(sticker, env, session) {
   for (const key of allPhotos) {
     try { await env.PHOTOS.delete(key); } catch (e) {}
   }
+  if (ctx) ctx.waitUntil(notifySharePoint(env.SHAREPOINT_MOVING_WEBHOOK_URL, { op: 'delete', sticker }));
   return jsonResponse({ ok: true });
 }
 
@@ -276,7 +324,7 @@ async function listInventoryItems(env) {
   return jsonResponse(results.map(rowToInventoryItem));
 }
 
-async function createInventoryItem(request, env, session) {
+async function createInventoryItem(request, env, session, ctx) {
   let body;
   try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'bad json' }, 400); }
   if (!body.sticker || !body.name) return jsonResponse({ error: 'sticker and name required' }, 400);
@@ -298,6 +346,13 @@ async function createInventoryItem(request, env, session) {
     }
     return jsonResponse({ error: String(e.message || e) }, 500);
   }
+  if (ctx) {
+    ctx.waitUntil(notifySharePoint(env.SHAREPOINT_INVENTORY_WEBHOOK_URL, inventorySharePointPayload({
+      sticker: body.sticker, name: body.name, type: body.type, packing: body.packing, qty: body.qty,
+      location: body.location, locationDetail: body.locationDetail, owner: body.owner,
+      createdBy: session.username, ts: body.ts || new Date().toISOString(), comments: body.comments || ''
+    })));
+  }
   return jsonResponse({ ok: true }, 201);
 }
 
@@ -307,7 +362,7 @@ const INVENTORY_UPDATABLE_FIELDS = {
   owner: 'owner', photo: 'photo_key', comments: 'comments'
 };
 
-async function updateInventoryItem(sticker, request, env, session) {
+async function updateInventoryItem(sticker, request, env, session, ctx) {
   const existing = await env.DB.prepare('SELECT created_by FROM inventory_items WHERE sticker = ?').bind(sticker).first();
   if (!existing) return jsonResponse({ error: 'not found' }, 404);
   const isUnclaimed = !existing.created_by;
@@ -352,6 +407,13 @@ async function updateInventoryItem(sticker, request, env, session) {
   if (sets.length === 0) return jsonResponse({ error: 'nothing to update' }, 400);
   values.push(sticker);
   await env.DB.prepare(`UPDATE inventory_items SET ${sets.join(', ')} WHERE sticker = ?`).bind(...values).run();
+  if (ctx) {
+    ctx.waitUntil((async () => {
+      if (newSticker) await notifySharePoint(env.SHAREPOINT_INVENTORY_WEBHOOK_URL, { op: 'delete', sticker });
+      const freshRow = await env.DB.prepare('SELECT * FROM inventory_items WHERE sticker = ?').bind(newSticker || sticker).first();
+      if (freshRow) await notifySharePoint(env.SHAREPOINT_INVENTORY_WEBHOOK_URL, inventorySharePointPayload(rowToInventoryItem(freshRow)));
+    })());
+  }
   return jsonResponse({
     ok: true,
     claimed: isUnclaimed && session.role !== 'admin' ? session.username : undefined,
@@ -359,7 +421,7 @@ async function updateInventoryItem(sticker, request, env, session) {
   });
 }
 
-async function deleteInventoryItem(sticker, env, session) {
+async function deleteInventoryItem(sticker, env, session, ctx) {
   const row = await env.DB.prepare('SELECT photo_key, photos, created_by FROM inventory_items WHERE sticker = ?').bind(sticker).first();
   if (!row) return jsonResponse({ error: 'not found' }, 404);
   if (session.role !== 'admin' && row.created_by !== session.username) {
@@ -371,6 +433,7 @@ async function deleteInventoryItem(sticker, env, session) {
   for (const key of allPhotos) {
     try { await env.PHOTOS.delete(key); } catch (e) {}
   }
+  if (ctx) ctx.waitUntil(notifySharePoint(env.SHAREPOINT_INVENTORY_WEBHOOK_URL, { op: 'delete', sticker }));
   return jsonResponse({ ok: true });
 }
 
@@ -488,7 +551,7 @@ async function deleteLocation(name, env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
 
@@ -504,24 +567,24 @@ export default {
 
       if (path === '/api/logout' && request.method === 'POST') return logout(request, env);
       if (path === '/api/items' && request.method === 'GET') return listItems(env);
-      if (path === '/api/items' && request.method === 'POST') return createItem(request, env, session);
+      if (path === '/api/items' && request.method === 'POST') return createItem(request, env, session, ctx);
       if (path === '/api/inventory-items' && request.method === 'GET') return listInventoryItems(env);
-      if (path === '/api/inventory-items' && request.method === 'POST') return createInventoryItem(request, env, session);
+      if (path === '/api/inventory-items' && request.method === 'POST') return createInventoryItem(request, env, session, ctx);
       if (path === '/api/teams' && request.method === 'GET') return getTeams(env);
       if (path === '/api/locations' && request.method === 'GET') return getLocations(env);
 
       let m = path.match(/^\/api\/items\/([^/]+)$/);
       if (m) {
         const sticker = decodeURIComponent(m[1]);
-        if (request.method === 'PATCH') return updateItem(sticker, request, env, session);
-        if (request.method === 'DELETE') return deleteItem(sticker, env, session);
+        if (request.method === 'PATCH') return updateItem(sticker, request, env, session, ctx);
+        if (request.method === 'DELETE') return deleteItem(sticker, env, session, ctx);
       }
 
       m = path.match(/^\/api\/inventory-items\/([^/]+)$/);
       if (m) {
         const sticker = decodeURIComponent(m[1]);
-        if (request.method === 'PATCH') return updateInventoryItem(sticker, request, env, session);
-        if (request.method === 'DELETE') return deleteInventoryItem(sticker, env, session);
+        if (request.method === 'PATCH') return updateInventoryItem(sticker, request, env, session, ctx);
+        if (request.method === 'DELETE') return deleteInventoryItem(sticker, env, session, ctx);
       }
 
       if (path === '/api/photos' && request.method === 'POST') return uploadPhoto(request, env);
